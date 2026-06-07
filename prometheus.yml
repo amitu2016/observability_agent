@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: 'caller-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets:
+          - 'caller-service:8080'
+
+  - job_name: 'downstream-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets:
+          - 'downstream-service:8080'

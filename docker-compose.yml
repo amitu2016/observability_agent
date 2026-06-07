@@ -1,0 +1,101 @@
+version: "3.8"
+
+networks:
+  observability:
+    driver: bridge
+
+volumes:
+  app-logs:
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.50
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "14250:14250"
+    networks:
+      - observability
+
+  prometheus:
+    image: prom/prometheus:v2.51.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--enable-feature=exemplar-storage'
+    networks:
+      - observability
+
+  loki:
+    image: grafana/loki:2.9.1
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki.yml:/etc/loki/local-config.yaml
+    networks:
+      - observability
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger
+    networks:
+      - observability
+
+  promtail:
+    image: grafana/promtail:2.9.1
+    volumes:
+      - ./promtail.yml:/etc/promtail/config.yml
+      - app-logs:/var/log/app
+    depends_on:
+      - loki
+    networks:
+      - observability
+    command: -config.file=/etc/promtail/config.yml
+
+  caller-service:
+    build:
+      context: ./caller-service
+    ports:
+      - "8081:8080"
+    volumes:
+      - app-logs:/var/log/app
+    environment:
+      OTEL_SERVICE_NAME: caller-service
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      JAVA_TOOL_OPTIONS: -javaagent:/opentelemetry-javaagent.jar
+    depends_on:
+      - jaeger
+    networks:
+      - observability
+
+  downstream-service:
+    build:
+      context: ./downstream-service
+    ports:
+      - "8082:8080"
+    volumes:
+      - app-logs:/var/log/app
+    environment:
+      OTEL_SERVICE_NAME: downstream-service
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      JAVA_TOOL_OPTIONS: -javaagent:/opentelemetry-javaagent.jar
+    depends_on:
+      - jaeger
+    networks:
+      - observability

@@ -1,0 +1,8 @@
+rootProject.name = 'observability-agent'
+
+if (file('caller-service/build.gradle').exists()) {
+    include 'caller-service'
+}
+if (file('downstream-service/build.gradle').exists()) {
+    include 'downstream-service'
+}
