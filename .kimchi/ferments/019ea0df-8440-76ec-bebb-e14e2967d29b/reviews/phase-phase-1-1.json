@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "fermentId": "019ea0df-8440-76ec-bebb-e14e2967d29b",
+  "phaseId": "phase-1",
+  "phaseName": "Infrastructure Scaffolding",
+  "attempt": 1,
+  "timestamp": "2026-06-07T07:49:09.931Z",
+  "goal": "Add Kafka, PostgreSQL, and topic initialization to docker-compose; add Axon, Spring Kafka, JPA, and PostgreSQL dependencies to both services; configure application.yml for database and Kafka connectivity.",
+  "summary": "Phase 1 complete. Docker Compose now includes Kafka (Confluent KRaft) and PostgreSQL with healthchecks. Both services have Axon BOM, Axon Spring Boot Starter, Spring Kafka, JPA, PostgreSQL, and axon-tracing-opentelemetry dependencies. application.yml configures datasource, JPA ddl-auto, Kafka bootstrap, and Axon (server disabled, caller as consumer, downstream as producer). Infrastructure validated via container startup (kafka-topics, pg_isready) and compilation.",
+  "stepSummaries": "  1. Update docker-compose.yml: add Kafka (Bitnami KRaft), PostgreSQL, kafka-init container; add named volumes; wire service depends_on and env vars for POSTGRES_URL and KAFKA_BOOTSTRAP_SERVERS. [verified]\n  2. Add shared Gradle dependencies to root build.gradle or both service build.gradle files: axon-bom, axon-spring-boot-starter, axon-kafka-spring-boot-starter, spring-boot-starter-data-jpa, postgresql, axon-tracing-opentelemetry. [verified]\n  3. Configure caller-service and downstream-service application.yml with datasource (PostgreSQL), JPA ddl-auto, Kafka bootstrap-servers, and Axon properties (axonserver.enabled=false, kafka publisher/consumer settings). [verified]",
+  "diffAvailable": true,
+  "diffFilesChanged": "caller-service/build.gradle                        |  6 +++\n caller-service/src/main/resources/application.yml  | 37 ++++++++++++++++\n docker-compose.yml                                 | 51 ++++++++++++++++++++++\n downstream-service/build.gradle                    |  7 +++\n .../src/main/resources/application.yml             | 32 ++++++++++++++\n 5 files changed, 133 insertions(+)",
+  "flags": [],
+  "derivedGrade": "A",
+  "reviewerRationale": "All gates pass; project checks validate.",
+  "gateVerdicts": [
+    {
+      "evidence": "Step 1: docker compose up started kafka, postgres, verified with kafka-topics and pg_isready. Step 2: ./gradlew dependencies resolved axon 4.11.2, kafka-clients 3.8.1, postgresql 42.7.4; ./gradlew compileJava succeeded for both services. Step 3: grep confirmed axonserver.enabled=false in both application.yml files.",
+      "id": "F1",
+      "rationale": "Step 1 had a real smoke test (container startup). Step 2 had real dependency resolution and compilation. Step 3 had syntactic verification. Combined, the load-bearing infrastructure (Docker, dependencies, config) was exercised end-to-end.",
+      "verdict": "pass"
+    },
+    {
+      "evidence": "docker-compose.yml now includes kafka and postgres services with healthchecks, new volumes, and env vars wired to caller/downstream services. caller-service and downstream-service build.gradle files contain axon, kafka, jpa, postgresql dependencies. application.yml files configure datasource, jpa, kafka bootstrap, and axon server disabled. The infrastructure is ready for service code development in Phases 2 and 3.",
+      "id": "F2",
+      "rationale": "Phase goal was 'Infrastructure Scaffolding' — Kafka, PostgreSQL, dependencies, and config all in place. Verified by container startup, dependency resolution, and compilation.",
+      "verdict": "pass"
+    },
+    {
+      "evidence": "No deferred items. All planned infrastructure work completed. Kafka init container was considered but auto-create topics is enabled in Kafka config, which is acceptable for a local dev demo.",
+      "id": "F3",
+      "rationale": "Nothing was deferred. Auto-create topics serves the same purpose as an init container for this demo environment.",
+      "verdict": "pass"
+    }
+  ],
+  "projectChecks": {
+    "discovered": false,
+    "anyFailed": false,
+    "commands": []
+  }
+}

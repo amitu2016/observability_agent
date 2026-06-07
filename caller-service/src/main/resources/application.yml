@@ -1,6 +1,43 @@
 server:
   port: 8080
 
+spring:
+  application:
+    name: caller-service
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/appdb}
+    username: ${POSTGRES_USER:appuser}
+    password: ${POSTGRES_PASSWORD:secret}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: caller-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+axon:
+  axonserver:
+    enabled: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    default-topic: bank.events
+    fetcher:
+      enabled: true
+    consumer:
+      event-processor-mode: TRACKING
+      auto-offset-reset: earliest
+    publisher:
+      enabled: false
+
 management:
   endpoints:
     web:
@@ -12,6 +49,9 @@ management:
     health:
       show-details: always
   metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
     export:
       prometheus:
         enabled: true

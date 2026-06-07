@@ -114,27 +114,63 @@ emitted during that request also carry the same `trace_id`.
 
 ---
 
-## Phase 0 — Correlation backbone ✅ COMPLETED
+## Phase 0 — Correlation backbone ✅ COMPLETED (refactored to banking domain)
 
 Nothing downstream works without this. Implemented in the Java services, not the agent.
 
 ### Implementation
-Two sample Spring Boot services (`caller-service` and `downstream-service`) were created as a Gradle (Groovy DSL) multi-module project. They run together with a local Docker Compose stack (Jaeger, Prometheus, Loki, Grafana, Promtail) and demonstrate full metric→trace→log correlation via `trace_id`.
+Two Spring Boot services (`caller-service` and `downstream-service`) form a **banking CQRS/Event Sourcing** demo with **Axon Framework**, **Kafka**, and **PostgreSQL**, fully preserving the original observability correlation backbone.
 
-**Key files created:**
-- `settings.gradle`, `build.gradle` (root)
-- `caller-service/` — Spring Boot app with `RestTemplate` calling downstream, `PrometheusExemplarConfig` (`OtelSpanContext` bean), JSON logback via `logstash-logback-encoder`, `RequestLoggingFilter`, `Dockerfile`
-- `downstream-service/` — Same instrumentation patterns, simple `GET /hello` endpoint, returns `X-Trace-Id` header
-- `docker-compose.yml` — 7 services: `jaeger`, `prometheus`, `loki`, `grafana`, `promtail`, `caller-service`, `downstream-service`
-- `prometheus.yml` — Scrapes both apps at `/actuator/prometheus`; exemplar storage enabled (`--enable-feature=exemplar-storage`)
-- `loki.yml` / `promtail.yml` — File-based storage; Promtail tails `/var/log/app/*.log`, parses JSON, promotes `trace_id`, `span_id`, `level` to Loki labels
-- `README.md` — Run & verify instructions
+**caller-service** — Banking Transfer API + Kafka Consumer
+- `TransferEntity` (JPA) with `TransferStatus` enum (`PENDING`/`COMPLETED`/`FAILED`)
+- `TransferRepository` (Spring Data JPA)
+- `TransferController` — `POST /transfers`, `GET /transfers/{id}`
+- `TransferEventListener` — `@KafkaListener` on `bank.events`, deserializes `TransferCompletedEvent`, updates read model
+- `PrometheusExemplarConfig` (`OtelSpanContext` bean), JSON logback, `RequestLoggingFilter`, OTel agent
+
+**downstream-service** — Axon Account Aggregate + Kafka Publisher
+- `AccountAggregate` with `@Aggregate`, `@CommandHandler`, `@EventSourcingHandler`
+- `CreateAccountCommand`, `TransferFundsCommand` (with `@TargetAggregateIdentifier`)
+- `AccountCreatedEvent`, `FundsTransferredEvent`, `TransferCompletedEvent`
+- `AccountController` — `POST /accounts`, `POST /accounts/{id}/transfer`
+- `AxonSerializerConfig` — `JacksonSerializer` overrides default XStream (produces JSON in Kafka)
+- Axon Kafka publisher enabled; Axon Server disabled (JPA event store in PostgreSQL)
+- `PrometheusExemplarConfig`, JSON logback, OTel agent
+
+**Infrastructure:**
+- `docker-compose.yml` — 9 services: `jaeger`, `prometheus`, `loki`, `grafana`, `promtail`, `postgres`, `kafka`, `caller-service`, `downstream-service`
+- `prometheus.yml` — Scrapes both apps at `/actuator/prometheus`; exemplar storage enabled
+- `loki.yml` / `promtail.yml` — Tails `/var/log/app/*.log`, parses JSON, promotes `trace_id`, `span_id`, `level`
+- `application.yml` — PostgreSQL datasource, JPA `ddl-auto: update`, Kafka bootstrap, Axon config
+
+### Banking E2E Flow
+```
+POST /transfers (caller-service)
+  ↓  create PENDING transfer in PostgreSQL
+  ↓  HTTP POST /accounts/{id}/transfer (downstream-service)
+       ↓  Axon CommandGateway → AccountAggregate.handle(TransferFundsCommand)
+       ↓  Axon event store (PostgreSQL) + Kafka publish TransferCompletedEvent
+Kafka ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+  ↓
+Spring Kafka @KafkaListener (caller-service)
+  ↓  UPDATE transfer SET status = COMPLETED
+GET /transfers/{id} → COMPLETED
+```
 
 ### Acceptance (verified)
 - [x] **Build:** Both services compile and produce runnable JARs (`./gradlew bootJar` passes).
-- [x] **OTel traces:** Jaeger UI shows cross-service traces after `curl localhost:8081/hello`.
-- [x] **Log correlation:** Logback JSON output includes `trace_id`/`span_id` from OTel MDC; Promtail successfully ships them to Loki with labels.
-- [x] **Prometheus exemplars:** `http_server_requests_seconds_count` carries `# {trace_id="…"}` exemplars (visible in OpenMetrics format and `/api/v1/query_exemplars`).
+- [x] **E2E transfer flow:** `POST /transfers` returns 202 with `transferId` and `status=PENDING`. `GET /transfers/{id}` eventually returns `COMPLETED` (Kafka async event consumed within ~3s).
+- [x] **Axon event sourcing:** `downstream-service` stores events in PostgreSQL `domain_event_entry` and publishes JSON events to Kafka.
+- [x] **OTel traces:** Jaeger UI shows cross-service traces spanning `POST /transfers` → `AccountAggregate.handle` → `bank.events publish` → `bank.events process`.
+- [x] **Log correlation:** Logback JSON output includes `trace_id`/`span_id` from OTel MDC; Promtail ships them to Loki with labels.
+- [x] **Prometheus exemplars:** `http_server_requests_seconds_bucket` carries `# {trace_id="…"}` exemplars (OpenMetrics format required).
+- [x] **End-to-end round-trip:** A single `trace_id` from a transfer request is queryable in Jaeger, referenced by Prometheus exemplars, and present in Loki log lines from both services.
+
+### Key bugs fixed during integration
+1. `TransferFundsCommand` missing `@TargetAggregateIdentifier` → command routing failed.
+2. Axon default XStream produced XML events in Kafka → caller Jackson parser failed → fixed with `JacksonSerializer` bean override.
+3. `transferId` mismatch: downstream generated its own UUID → fixed `AccountController` to propagate caller's `transferId`.
+4. Prometheus histogram buckets not enabled → exemplars missing → added `management.metrics.distribution.percentiles-histogram.http.server.requests: true`.…"}` exemplars (visible in OpenMetrics format and `/api/v1/query_exemplars`).
 - [x] **End-to-end round-trip:** A single `trace_id` from a request is queryable in Jaeger, referenced by Prometheus exemplars, and present in Loki log lines from both services.
 
 ### Original checklist

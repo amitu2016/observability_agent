@@ -1,6 +1,38 @@
 server:
   port: 8080
 
+spring:
+  application:
+    name: downstream-service
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/appdb}
+    username: ${POSTGRES_USER:appuser}
+    password: ${POSTGRES_PASSWORD:secret}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+axon:
+  axonserver:
+    enabled: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    default-topic: bank.events
+    publisher:
+      enabled: true
+      confirmation-mode: WAIT_FOR_ACK
+      ack-timeout: 1000
+    producer:
+      event-processor-mode: TRACKING
+      retries: 3
+    fetcher:
+      enabled: false
+
 management:
   endpoints:
     web:
@@ -12,6 +44,9 @@ management:
     health:
       show-details: always
   metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
     export:
       prometheus:
         enabled: true

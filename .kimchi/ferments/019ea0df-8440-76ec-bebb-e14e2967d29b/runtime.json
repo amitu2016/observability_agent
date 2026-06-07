@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "stepStartCounts": {
+    "phase-4:step-2": 1
+  },
+  "blockRetries": {},
+  "lastBlockHashes": {},
+  "stepCompleteAttempts": {
+    "phase-1:step-1": 1,
+    "phase-1:step-2": 1,
+    "phase-1:step-3": 1,
+    "phase-2:step-1": 1,
+    "phase-2:step-2": 1,
+    "phase-2:step-3": 1,
+    "phase-2:step-4": 1,
+    "phase-3:step-1": 1,
+    "phase-3:step-2": 1,
+    "phase-3:step-3": 1,
+    "phase-3:step-4": 1,
+    "phase-3:step-5": 1,
+    "phase-4:step-1": 1,
+    "phase-4:step-3": 1,
+    "phase-4:step-4": 1
+  },
+  "phaseStartRefs": {
+    "phase-1": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-2": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-3": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-4": "145724b807a6af23497e6031481fe375a676a3cc"
+  },
+  "stepStartRefs": {
+    "phase-1:step-1": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-1:step-2": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-1:step-3": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-2:step-1": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-2:step-2": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-2:step-3": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-2:step-4": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-3:step-1": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-3:step-2": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-3:step-3": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-3:step-4": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-3:step-5": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-4:step-1": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-4:step-2": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-4:step-3": "145724b807a6af23497e6031481fe375a676a3cc",
+    "phase-4:step-4": "145724b807a6af23497e6031481fe375a676a3cc"
+  }
+}
