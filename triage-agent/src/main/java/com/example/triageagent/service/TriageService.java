@@ -1,6 +1,7 @@
 package com.example.triageagent.service;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -23,8 +24,11 @@ public class TriageService {
 
     private final ChatClient chatClient;
 
-    public TriageService(ChatClient.Builder chatClientBuilder) {
-        this.chatClient = chatClientBuilder.build();
+    public TriageService(ChatClient.Builder chatClientBuilder,
+                         ToolCallbackProvider... toolCallbackProviders) {
+        this.chatClient = chatClientBuilder
+                .defaultToolCallbacks(toolCallbackProviders)
+                .build();
     }
 
     public String investigate(String question) {
