@@ -1,0 +1,176 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "Loki"
+      },
+      "gridPos": {
+        "h": 22,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": true,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "Loki"
+          },
+          "editorMode": "code",
+          "expr": "{job=\"java-logs\", filename=~\".*$service.*\", level=~\"$level\", trace_id=~\"$trace_id\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Application Logs (caller-service & downstream-service)",
+      "type": "logs"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["observability", "logs"],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "value": "$__all",
+          "text": "All"
+        },
+        "datasource": {
+          "type": "loki",
+          "uid": "Loki"
+        },
+        "definition": "label_values(filename)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Service",
+        "multi": false,
+        "name": "service",
+        "options": [],
+        "query": {
+          "query": "label_values(filename)",
+          "refId": "LokiVariableQuery"
+        },
+        "regex": "/var/log/app/(.*)\\.log",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "value": "$__all",
+          "text": "All"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Log Level",
+        "multi": false,
+        "name": "level",
+        "options": [
+          {
+            "selected": true,
+            "value": "$__all",
+            "text": "All"
+          },
+          {
+            "selected": false,
+            "value": "INFO",
+            "text": "INFO"
+          },
+          {
+            "selected": false,
+            "value": "WARN",
+            "text": "WARN"
+          },
+          {
+            "selected": false,
+            "value": "ERROR",
+            "text": "ERROR"
+          },
+          {
+            "selected": false,
+            "value": "DEBUG",
+            "text": "DEBUG"
+          }
+        ],
+        "query": "INFO, WARN, ERROR, DEBUG",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "value": ".*",
+          "text": ".*"
+        },
+        "hide": 0,
+        "label": "Trace ID",
+        "name": "trace_id",
+        "options": [],
+        "query": ".*",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "browser",
+  "title": "Service Logs Dashboard",
+  "uid": "service-logs-dashboard",
+  "version": 1
+}

@@ -94,8 +94,19 @@ Open [http://localhost:16686](http://localhost:16686) and:
 3. You should see a trace that spans both `caller-service` and `downstream-service`
 4. Click on the trace to see individual spans: `POST /transfers`, `TransferController.initiateTransfer`, `AccountAggregate.handle`, `EventBus.publishEvent`, `bank.events publish`, `bank.events process`
 
-## Verify Exemplars (Prometheus)
+## Verify Exemplars & Metrics (Prometheus & Grafana)
 
+### Option A: Use the JVM & Application Metrics Dashboard (Recommended)
+Open [http://localhost:3000](http://localhost:3000) (login: `admin` / `admin`) and:
+1. Go to **Dashboards** in the left sidebar.
+2. Select the **Observability** folder, and open **JVM & Application Metrics Dashboard**.
+3. Use the **Service** dropdown at the top to filter metrics for `caller-service` or `downstream-service`.
+4. In the **HTTP Latency Buckets (with Prometheus Exemplars)** panel:
+   - Hover over the plotted dots to view HTTP request durations.
+   - Any requests recorded with traces will display green **Exemplar** dots.
+   - Hover over an exemplar dot to view its `trace_id` and click the link to jump directly to the Jaeger trace viewer.
+
+### Option B: Explore directly via Prometheus UI
 Open [http://localhost:9090](http://localhost:9090) and:
 
 1. Query for: `http_server_requests_seconds_bucket`
@@ -111,6 +122,16 @@ Open [http://localhost:9090](http://localhost:9090) and:
 
 Open [http://localhost:3000](http://localhost:3000) (login: `admin` / `admin`) and:
 
+### Option A: Use the Service Logs Dashboard (Recommended)
+1. Go to **Dashboards** in the left sidebar.
+2. Select the **Observability** folder, and open **Service Logs Dashboard**.
+3. Use the dropdown filters at the top:
+   - **Service**: Filter logs by `caller-service` or `downstream-service`.
+   - **Log Level**: Filter logs by `INFO`, `WARN`, `ERROR`, or `DEBUG`.
+   - **Trace ID**: Input a specific trace ID (default is `.*` to show all) to see related logs across both services.
+4. *Tip:* Any log line containing a `"trace_id"` will show the trace ID as a clickable link (**TraceID**). Clicking it opens the corresponding Jaeger trace details directly inside Grafana.
+
+### Option B: Explore directly via Loki
 1. Navigate to **Explore**
 2. Select **Loki** as the data source
 3. Run the query:
