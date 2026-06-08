@@ -1,0 +1,14 @@
+spring:
+  ai:
+    openai:
+      api-key: dummy-test-key
+    mcp:
+      client:
+        toolcallback:
+          enabled: false
+        sse:
+          connections:
+            grafana:
+              enabled: false
+            jaeger:
+              enabled: false

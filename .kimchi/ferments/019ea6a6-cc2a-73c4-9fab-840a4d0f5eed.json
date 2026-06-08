@@ -1,0 +1,198 @@
+{
+  "id": "019ea6a6-cc2a-73c4-9fab-840a4d0f5eed",
+  "name": "Build triage-agent skeleton",
+  "description": "implement phase 2 from plan.md. phase 1 is already completed.",
+  "status": "complete",
+  "worktree": {
+    "path": "/Users/amit/Developer/observability_agent",
+    "branch": "main",
+    "commit": "cb6baa6ab32789a393eb2a7f5fabd71567182ac8"
+  },
+  "scoping": {
+    "goal": {
+      "answer": "Implement Phase 2 of the observability incident-triage agent: create a new triage-agent Spring Boot service that acts as a Spring AI MCP client connecting to the Grafana and Jaeger MCP servers, wires an OpenAI model, implements grounding via Prometheus discovery tools, exposes a REST endpoint for triage questions, and passes a smoke test.",
+      "confirmedAt": "2026-06-08T10:24:26.786Z"
+    },
+    "criteria": {
+      "answer": "New triage-agent Gradle module exists, compiles with ./gradlew :triage-agent:build, and is wired into settings.gradle\nMCP client auto-configures SSE connections to Grafana MCP (http://mcp-grafana:8000) and Jaeger MCP (http://jaeger-mcp-service:8080)\nOpenAI model wired via spring-ai-starter-model-openai; API key from OPENAI_API_KEY env var\nGrounding system prompt instructs the model to use Grafana MCP discovery tools (list_prometheus_metric_names, list_prometheus_label_names, list_prometheus_label_values, list_datasources) before generating PromQL/LogQL\nPOST /api/triage/investigate endpoint accepts a JSON question and returns the model response\nJUnit context-load test verifies ChatClient and ToolCallbackProvider beans are created at startup\nShell script scripts/triage-agent-smoke-test.sh executes against the running agent (health + sample question)\ntriage-agent container added to docker-compose.yml on the observability network",
+      "confirmedAt": "2026-06-08T10:24:26.786Z"
+    },
+    "constraints": {
+      "answer": "Spring Boot 3.4, Java 17, Spring AI 1.1.4, Read-only by design — agent must not expose write or remediation tools, Reuse existing Docker observability network and service names, Follow existing package conventions (com.example.*) and Gradle patterns, Do not modify Phase 0/1 services or infrastructure except to add the new module to compose",
+      "confirmedAt": "2026-06-08T10:24:26.786Z"
+    },
+    "phases": {
+      "answer": "Build triage-agent skeleton",
+      "confirmedAt": "2026-06-08T10:24:26.786Z"
+    },
+    "assumptions": {
+      "answer": "OpenAI API key supplied at runtime via OPENAI_API_KEY environment variable; Grafana MCP server and Jaeger MCP server are already running on the Docker network (Phase 1 complete); Both MCP servers expose SSE on the default /sse endpoint path; Model selection defaults to Spring AI OpenAI starter default and can be overridden via config",
+      "confirmedAt": "2026-06-08T10:24:26.786Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-1",
+      "index": 1,
+      "name": "Build triage-agent skeleton",
+      "goal": "Create, wire, and verify the triage-agent Spring Boot service as an MCP client with OpenAI model, grounding prompt, REST endpoint, and smoke tests.",
+      "description": "A single vertical slice covering module scaffolding, Spring AI MCP client configuration, OpenAI wiring, REST endpoint, Docker integration, and smoke tests.",
+      "parallel": false,
+      "status": "completed",
+      "steps": [
+        {
+          "id": "step-1",
+          "index": 1,
+          "description": "Scaffold triage-agent/ module: build.gradle with Spring Boot, spring-ai-starter-mcp-client, spring-ai-starter-model-openai, actuator, web; src/main/java/com/example/triageagent/ package; main class; application.yml with SSE connections to Grafana MCP and Jaeger MCP, OpenAI API key, toolcallback enabled, server port 8080.",
+          "status": "verified",
+          "verification": {
+            "command": "test -f triage-agent/build.gradle && grep -q 'spring-ai-starter-mcp-client' triage-agent/build.gradle && grep -q 'spring-ai-starter-model-openai' triage-agent/build.gradle",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T10:24:53.031Z",
+          "completedAt": "2026-06-08T10:28:04.589Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T10:28:04.589Z"
+          }
+        },
+        {
+          "id": "step-2",
+          "index": 2,
+          "description": "Register triage-agent in root settings.gradle",
+          "status": "verified",
+          "verification": {
+            "command": "grep -q \"triage-agent\" settings.gradle",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T10:28:16.738Z",
+          "completedAt": "2026-06-08T10:29:33.911Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T10:29:33.911Z"
+          }
+        },
+        {
+          "id": "step-3",
+          "index": 3,
+          "description": "Implement TriageService with ChatClient, a system prompt enforcing grounding discipline (discover metrics/labels first), and a user prompt template. Implement TriageController with POST /api/triage/investigate accepting TriageRequest and returning TriageResponse.",
+          "status": "verified",
+          "verification": {
+            "command": "test -f triage-agent/src/main/java/com/example/triageagent/service/TriageService.java && test -f triage-agent/src/main/java/com/example/triageagent/controller/TriageController.java",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T10:30:02.235Z",
+          "completedAt": "2026-06-08T10:33:07.409Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T10:33:07.409Z"
+          }
+        },
+        {
+          "id": "step-4",
+          "index": 4,
+          "description": "Add Dockerfile for triage-agent (eclipse-temurin:17-jre, port 8080) and add service to docker-compose.yml on observability network with OPENAI_API_KEY env var, depending on mcp-grafana and jaeger-mcp-service. Map port 8084:8080.",
+          "status": "verified",
+          "verification": {
+            "command": "docker compose config > /dev/null 2>&1 && grep -q 'triage-agent' docker-compose.yml",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T10:33:29.575Z",
+          "completedAt": "2026-06-08T10:36:01.838Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T10:36:01.838Z"
+          }
+        },
+        {
+          "id": "step-5",
+          "index": 5,
+          "description": "Add JUnit context-load test verifying ChatClient and ToolCallbackProvider beans exist at startup. Add unit tests for TriageController request/response mapping.",
+          "status": "verified",
+          "verification": {
+            "command": "./gradlew :triage-agent:test --tests '*ContextLoadTest' --tests '*ControllerTest' > /dev/null 2>&1",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T10:36:17.038Z",
+          "completedAt": "2026-06-08T10:52:11.522Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T10:52:11.522Z"
+          }
+        },
+        {
+          "id": "step-6",
+          "index": 6,
+          "description": "Add scripts/triage-agent-smoke-test.sh that checks agent health (/actuator/health) and sends a sample triage question to /api/triage/investigate, asserting HTTP 200 and non-empty response.",
+          "status": "verified",
+          "verification": {
+            "command": "bash -n scripts/triage-agent-smoke-test.sh",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T10:52:42.512Z",
+          "completedAt": "2026-06-08T10:53:47.862Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T10:53:47.862Z"
+          }
+        }
+      ],
+      "startedAt": "2026-06-08T10:24:35.059Z",
+      "completedAt": "2026-06-08T10:55:17.490Z",
+      "summary": "Phase 1 complete. The triage-agent Spring Boot module was scaffolded, wired into the Gradle build, configured as a Spring AI MCP client with OpenAI model, implemented with a grounding-enforcing TriageService and REST endpoint, Dockerized and added to docker-compose, covered by passing JUnit tests, and accompanied by a shell smoke-test script."
+    }
+  ],
+  "decisions": [],
+  "memories": [],
+  "createdAt": "2026-06-08T09:53:29.642Z",
+  "updatedAt": "2026-06-08T10:59:48.005Z",
+  "goal": "Implement Phase 2 of the observability incident-triage agent: create a new triage-agent Spring Boot service that acts as a Spring AI MCP client connecting to the Grafana and Jaeger MCP servers, wires an OpenAI model, implements grounding via Prometheus discovery tools, exposes a REST endpoint for triage questions, and passes a smoke test.",
+  "successCriteria": [
+    "New triage-agent Gradle module exists, compiles with ./gradlew :triage-agent:build, and is wired into settings.gradle",
+    "MCP client auto-configures SSE connections to Grafana MCP (http://mcp-grafana:8000) and Jaeger MCP (http://jaeger-mcp-service:8080)",
+    "OpenAI model wired via spring-ai-starter-model-openai; API key from OPENAI_API_KEY env var",
+    "Grounding system prompt instructs the model to use Grafana MCP discovery tools (list_prometheus_metric_names, list_prometheus_label_names, list_prometheus_label_values, list_datasources) before generating PromQL/LogQL",
+    "POST /api/triage/investigate endpoint accepts a JSON question and returns the model response",
+    "JUnit context-load test verifies ChatClient and ToolCallbackProvider beans are created at startup",
+    "Shell script scripts/triage-agent-smoke-test.sh executes against the running agent (health + sample question)",
+    "triage-agent container added to docker-compose.yml on the observability network"
+  ],
+  "constraints": [
+    "Spring Boot 3.4, Java 17, Spring AI 1.1.4",
+    "Read-only by design — agent must not expose write or remediation tools",
+    "Reuse existing Docker observability network and service names",
+    "Follow existing package conventions (com.example.*) and Gradle patterns",
+    "Do not modify Phase 0/1 services or infrastructure except to add the new module to compose"
+  ],
+  "lastActiveAt": "2026-06-08T10:24:35.059Z"
+}

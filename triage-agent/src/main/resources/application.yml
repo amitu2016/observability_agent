@@ -1,0 +1,19 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: triage-agent
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+    mcp:
+      client:
+        toolcallback:
+          enabled: true
+        sse:
+          connections:
+            grafana:
+              url: http://mcp-grafana:8000
+            jaeger:
+              url: http://jaeger-mcp-service:8080

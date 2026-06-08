@@ -9,3 +9,6 @@ if (file('downstream-service/build.gradle').exists()) {
 if (file('jaeger-mcp-service/build.gradle').exists()) {
     include 'jaeger-mcp-service'
 }
+if (file('triage-agent/build.gradle').exists()) {
+    include 'triage-agent'
+}

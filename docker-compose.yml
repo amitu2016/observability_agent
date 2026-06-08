@@ -84,6 +84,19 @@ services:
     networks:
       - observability
 
+  triage-agent:
+    build:
+      context: ./triage-agent
+    ports:
+      - "8084:8080"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    depends_on:
+      - mcp-grafana
+      - jaeger-mcp-service
+    networks:
+      - observability
+
   promtail:
     image: grafana/promtail:2.9.1
     volumes:
