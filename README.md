@@ -119,10 +119,26 @@ Open [http://localhost:3000](http://localhost:3000) (login: `admin` / `admin`) a
    ```
 4. You should see log lines from both `caller-service` and `downstream-service` sharing the same `trace_id`
 
+## Verify Kafka Messages (Kafka UI)
+
+Open [http://localhost:8085](http://localhost:8085) and:
+
+1. Click on the **local** cluster.
+2. Select **Topics** on the left menu.
+3. Click on the `bank.events` topic.
+4. Go to the **Messages** tab.
+5. Click **Seek to** / **Submit** to view incoming event messages (like `FundsTransferredEvent`, `TransferCompletedEvent`).
+
+*Alternatively, to view via CLI:*
+```bash
+docker exec -it observability_agent-kafka-1 kafka-console-consumer --bootstrap-server localhost:9092 --topic bank.events --from-beginning
+```
+
 ## Container URLs
 
 | Service            | URL                                | Credentials         |
 |--------------------|------------------------------------|---------------------|
+| Kafka UI           | http://localhost:8085              | (no auth)           |
 | Grafana            | http://localhost:3000              | admin / admin       |
 | Jaeger UI          | http://localhost:16686             | (no auth)           |
 | Prometheus         | http://localhost:9090              | (no auth)           |
