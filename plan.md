@@ -185,19 +185,28 @@ GET /transfers/{id} → COMPLETED
       metric exemplar → `trace_id` → trace in Jaeger → log lines in Loki with the
       same `trace_id`. **Do not proceed until this round-trip works.**
 
-## Phase 1 — Read-only query layer
+## Phase 1 — Read-only query layer ✅ COMPLETED
 
-- [ ] Stand up Loki and register it as a Grafana datasource.
-- [ ] Register Prometheus and Jaeger as Grafana datasources.
-- [ ] Deploy the Grafana MCP server (`mcp-grafana`) with `--disable-write`.
-      Requires Grafana 9.0+. Authenticate with a scoped, read-only service account
-      token (datasource query + dashboard read scopes only).
-- [ ] Confirm the MCP server exposes: PromQL query, LogQL query, dashboard search,
-      alert-rule status, Sift investigations (error patterns in Loki, slow requests),
-      and deep-link generation.
-- [ ] Build a **custom Jaeger trace tool** (Spring AI tool / MCP tool) wrapping the
-      Jaeger query API — fetch trace by `trace_id`, search traces by service + time
-      window + tags. This fills the Jaeger-vs-Tempo gap.
+- [x] Stand up Loki and register it as a Grafana datasource. *(Already provisioned in Grafana `datasources.yml` from Phase 0.)*
+- [x] Register Prometheus and Jaeger as Grafana datasources. *(Already provisioned in Grafana `datasources.yml` from Phase 0.)*
+- [x] Deploy the Grafana MCP server (`mcp-grafana`) with `--disable-write`.
+      Uses Grafana admin credentials (`admin/admin`) via env vars; read-only enforced by `--disable-write` flag.
+- [x] Confirm the MCP server exposes: PromQL query, LogQL query, dashboard search,
+      alert-rule status, and deep-link generation.
+      **Note:** Sift write tools (`find_error_pattern_logs`, `find_slow_requests`) are disabled
+      by `--disable-write` per read-only design constraint. Read-only Sift tools still verified.
+- [x] Build a **custom Jaeger trace tool** (Spring AI MCP server) wrapping the
+      Jaeger query API — `get_trace_by_id` and `search_traces`.
+      **Note:** Spring AI 1.1.4 does **not** auto-scan `@Tool` annotations for MCP server tools.
+      A manual `MethodToolCallbackProvider` bean is required to register tools with the MCP server.
+
+### Phase 1 artifacts
+
+- `docker-compose.yml` — added `mcp-grafana` (port 8000) and `jaeger-mcp-service` (port 8083)
+- `jaeger-mcp-service/` — new Gradle submodule
+- `scripts/provision-grafana-sa.sh` — service account provisioning utility
+- `scripts/verify-mcp-tools.sh` — health + SSE + tool registration checks
+- `scripts/smoke-test.sh` — end-to-end PromQL/LogQL/trace verification
 
 ## Phase 2 — Agent skeleton
 

@@ -19,6 +19,10 @@ caller-service (port 8081) → downstream-service (port 8082)
       Promtail ← JSON logs with trace_id/span_id → Loki (port 3100)
          ↓
       Grafana (port 3000)
+         ↓
+    Grafana MCP Server (port 8000)  ←  mcp-grafana --disable-write
+         ↓
+    Jaeger MCP Server (port 8083)   ←  custom Spring AI MCP server
 
 Metrics: caller/downstream → Prometheus (port 9090) with Exemplar trace_id
 Infrastructure: Kafka (port 9092), PostgreSQL (port 5432)
@@ -43,16 +47,18 @@ Infrastructure: Kafka (port 9092), PostgreSQL (port 5432)
 docker compose up -d --build
 ```
 
-This starts all 9 containers:
+This starts all 11 containers:
 - `jaeger` — Jaeger all-in-one (traces)
 - `prometheus` — Prometheus with exemplar storage enabled
 - `loki` — Loki log aggregation
 - `grafana` — Dashboards
+- `mcp-grafana` — Grafana MCP server (read-only)
 - `promtail` — Log scraper
 - `postgres` — PostgreSQL (Axon event store + caller read model)
 - `kafka` — Kafka (Confluent KRaft mode, event bus)
 - `caller-service` — Banking Transfer API with Kafka consumer
 - `downstream-service` — Axon Account Aggregate with Kafka publisher
+- `jaeger-mcp-service` — Custom Jaeger trace MCP server
 
 ## Create an Account
 
@@ -169,6 +175,8 @@ docker exec -it observability_agent-kafka-1 kafka-console-consumer --bootstrap-s
 | Promtail           | http://localhost:9080              | (no auth)           |
 | Kafka              | localhost:9092                     | (no auth)           |
 | PostgreSQL         | localhost:5432                     | appuser / secret    |
+| **mcp-grafana**    | **http://localhost:8000**          | (no auth)           |
+| **jaeger-mcp-service** | **http://localhost:8083**      | (no auth)           |
 
 ## Environment Variables
 
@@ -186,6 +194,70 @@ Both services are configured with:
 | `POSTGRES_USER`               | `appuser`                                 |
 | `POSTGRES_PASSWORD`           | `secret`                                  |
 | `KAFKA_BOOTSTRAP_SERVERS`     | `kafka:29092`                             |
+
+## Phase 1 — Read-only Query Layer
+
+Phase 1 deploys two MCP (Model Context Protocol) servers that expose query tools to the observability stack. These are standalone services added to `docker-compose.yml`.
+
+### Grafana MCP Server
+
+- **Container:** `mcp-grafana`
+- **Port:** `8000`
+- **Image:** `grafana/mcp-grafana:latest`
+- **Transport:** SSE (`--address :8000`)
+- **Authentication:** Grafana admin credentials (`admin/admin`)
+- **Read-only:** `--disable-write` flag enforces read-only mode
+
+Exposed tools (verified):
+- `query_prometheus` — PromQL queries
+- `query_loki_logs` — LogQL queries
+- `search_dashboards` — Dashboard search
+- `alerting_manage_rules` — Alert rule status (read-only operations)
+- `generate_deeplink` — Deep-link generation
+- `list_sift_investigations` / `get_sift_investigation` — Sift read tools
+
+**Note:** Sift write tools (`find_error_pattern_logs`, `find_slow_requests`) are disabled by `--disable-write`. Manual PromQL/LogQL anomaly detection is used instead.
+
+### Jaeger MCP Server
+
+- **Container:** `jaeger-mcp-service`
+- **Port:** `8083`
+- **Framework:** Spring Boot 3.4 + Spring AI MCP Server WebMVC SSE
+- **Base URL:** `http://jaeger:16686`
+
+Exposed tools:
+- `get_trace_by_id` — Fetch a single trace by `trace_id`
+- `search_traces` — Search traces by service, time window, and limit
+
+**Implementation note:** Spring AI 1.1.4 does **not** auto-scan `@Tool` annotations for MCP server registration. Tools are registered via an explicit `MethodToolCallbackProvider` bean in `JaegerToolConfiguration.java`.
+
+### Verify MCP Servers
+
+```bash
+bash scripts/verify-mcp-tools.sh
+```
+
+This script checks:
+1. Grafana MCP health (`http://localhost:8000/healthz` → 200)
+2. Jaeger MCP actuator health (`http://localhost:8083/actuator/health` → 200)
+3. Jaeger MCP SSE stream responds with event data
+4. Jaeger container logs show `Registered tools: 2`
+
+### End-to-End Smoke Test
+
+```bash
+bash scripts/smoke-test.sh
+```
+
+This script:
+1. Starts the full stack
+2. Creates a bank account (via `downstream-service`)
+3. Initiates a transfer (via `caller-service`)
+4. Extracts the `trace_id` from the `X-Trace-Id` response header
+5. Queries **Prometheus** for metrics, **Loki** for logs, and **Jaeger** for the trace
+6. Verifies both MCP servers are still healthy
+
+All queries must return non-empty data for the smoke test to pass.
 
 ## Technology Stack
 
