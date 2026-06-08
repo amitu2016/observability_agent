@@ -22,7 +22,7 @@ echo "    triage-agent health: OK (200)"
 
 # Send a sample triage question
 echo "==> Sending sample triage question..."
-RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+RESPONSE=$(curl -s --max-time 120 -w "\n%{http_code}" -X POST \
     -H "Content-Type: application/json" \
     -d '{"question":"What is the error rate for caller-service in the last 15 minutes?"}' \
     "$TRIAGE_AGENT_URL/api/triage/investigate")
@@ -41,5 +41,36 @@ if [ -z "$BODY" ] || [ "$BODY" = "{}" ]; then
     exit 1
 fi
 
-echo "    triage-agent responded with HTTP 200 and non-empty body"
+# Validate structured TriageReport fields with jq
+echo "==> Validating structured report fields..."
+if ! echo "$BODY" | jq -e '.steps' > /dev/null 2>&1; then
+    echo "ERROR: response missing .steps" >&2
+    echo "Body: $BODY" >&2
+    exit 1
+fi
+
+if ! echo "$BODY" | jq -e '.rootCause' > /dev/null 2>&1; then
+    echo "ERROR: response missing .rootCause" >&2
+    echo "Body: $BODY" >&2
+    exit 1
+fi
+
+if ! echo "$BODY" | jq -e '.confidence' > /dev/null 2>&1; then
+    echo "ERROR: response missing .confidence" >&2
+    echo "Body: $BODY" >&2
+    exit 1
+fi
+
+if ! echo "$BODY" | jq -e '.question' > /dev/null 2>&1; then
+    echo "ERROR: response missing .question" >&2
+    echo "Body: $BODY" >&2
+    exit 1
+fi
+
+STEP_COUNT=$(echo "$BODY" | jq '.steps | length')
+echo "    Report contains $STEP_COUNT investigation steps"
+echo "    rootCause: $(echo "$BODY" | jq -r '.rootCause[:80]')..."
+echo "    confidence: $(echo "$BODY" | jq -r '.confidence')"
+
+echo "    triage-agent responded with HTTP 200 and valid structured body"
 echo "==> Smoke test passed"

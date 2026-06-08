@@ -1,0 +1,193 @@
+{
+  "id": "019ea7e9-3148-73ea-8b32-6e182b197680",
+  "name": "Async investigation via Kafka",
+  "description": "Make triage investigations asynchronous using Kafka and PostgreSQL. Change POST /api/triage/investigate from synchronous blocking to async: return 202 Accepted with investigation ID immediately, publish the request to a triage.requests Kafka topic, a @KafkaListener processes the investigation by running the 5-step loop, stores the TriageReport result in PostgreSQL, and clients poll GET /api/triage/investigations/{id} for status and results.",
+  "status": "paused",
+  "worktree": {
+    "path": "/Users/amit/Developer/observability_agent",
+    "branch": "main",
+    "commit": "2bef04a9f5524ec3375a9da22245c2924f277b1d"
+  },
+  "scoping": {
+    "goal": {
+      "answer": "Make triage investigations asynchronous using Kafka and PostgreSQL. Change POST /api/triage/investigate from synchronous blocking to async: return 202 Accepted with investigation ID immediately, publish the request to a triage.requests Kafka topic, a @KafkaListener processes the investigation by running the 5-step loop, stores the TriageReport result in PostgreSQL, and clients poll GET /api/triage/investigations/{id} for status and results.",
+      "confirmedAt": "2026-06-08T15:58:10.831Z"
+    },
+    "criteria": {
+      "answer": "spring-kafka added to triage-agent/build.gradle and compiles\nInvestigationJob JPA entity and repository exist, backed by PostgreSQL\nInvestigationKafkaProducer publishes investigation requests to 'triage.requests' topic\nInvestigationKafkaConsumer with @KafkaListener consumes from 'triage.requests', runs the 5-step loop, and persists TriageReport to PostgreSQL with status COMPLETED or FAILED\nPOST /api/triage/investigate returns HTTP 202 with {investigationId, status, createdAt} immediately (no blocking)\nGET /api/triage/investigation/{id} returns status and the TriageReport when completed\nJUnit tests verify 202 response and Kafka produce/consume behavior\nSmoke test submits investigation, polls to completion, and asserts structured report fields\nFull build and docker compose config remain valid after all changes",
+      "confirmedAt": "2026-06-08T15:58:10.831Z"
+    },
+    "constraints": {
+      "answer": "Keep all changes within the triage-agent Gradle module, Do not modify Phase 0/1/2/3/4 services or infrastructure beyond adding necessary Kafka config, Follow existing package conventions (com.example.triageagent.*) and Gradle patterns, Preserve existing POST /api/triage/investigate endpoint path; only change response from 200 to 202 and add polling GET endpoint, The 5-step investigation loop must remain functionally identical, only the invocation mechanism changes from sync to async",
+      "confirmedAt": "2026-06-08T15:58:10.831Z"
+    },
+    "phases": {
+      "answer": "Async Kafka investigation flow",
+      "confirmedAt": "2026-06-08T15:58:10.831Z"
+    },
+    "assumptions": {
+      "answer": "The user explicitly chose Kafka-based async over DB-only or SSE approaches. Kafka broker is already running in docker-compose (bank.events). PostgreSQL is already running (Axon event store + caller read model).; Investigation consumer stays in the same triage-agent service for simplicity — no new Gradle module needed; Kafka auto-creation is enabled in docker-compose (KAFKA_AUTO_CREATE_TOPICS_ENABLE=true), so explicit topic creation via AdminClient is optional but not required; Jackson ObjectMapper is already on classpath via spring-boot-starter-web; JSON serialization for Kafka payloads uses Jackson; Existing Phase 3/4 implementation (InvestigationStep, InvestigationState, TriageOrchestratorService, TriageReport, InvestigationMapper) is available as-is and will be invoked from the consumer; Spring Kafka version aligned with Spring Boot 3.4 BOM via spring-ai-bom or spring-boot-dependencies",
+      "confirmedAt": "2026-06-08T15:58:10.831Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-1",
+      "index": 1,
+      "name": "Async Kafka investigation flow",
+      "goal": "Convert synchronous investigation into an async Kafka-driven flow with database persistence and polling API.",
+      "description": "A single vertical slice: schema, producer, consumer, controller, tests, smoke. Sequential due to data dependencies.",
+      "parallel": false,
+      "status": "active",
+      "steps": [
+        {
+          "id": "step-1",
+          "index": 1,
+          "description": "Add spring-kafka to triage-agent/build.gradle. Create InvestigationJob JPA entity (UUID id, String question, Status enum PENDING/RUNNING/COMPLETED/FAILED, Instant createdAt/completedAt, String reportJson) and InvestigationJobRepository. Update application-test.yml to disable Kafka if needed for fast tests.",
+          "status": "verified",
+          "verification": {
+            "command": "grep -q 'spring-kafka' triage-agent/build.gradle && test -f triage-agent/src/main/java/com/example/triageagent/model/InvestigationJob.java && test -f triage-agent/src/main/java/com/example/triageagent/repository/InvestigationJobRepository.java",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T15:59:27.072Z",
+          "completedAt": "2026-06-08T16:03:45.049Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T16:03:45.049Z"
+          }
+        },
+        {
+          "id": "step-2",
+          "index": 2,
+          "description": "Create InvestigationKafkaProducer that converts investigation request to a JSON payload and sends it to 'triage.requests' topic using KafkaTemplate<String, String>.",
+          "status": "verified",
+          "verification": {
+            "command": "test -f triage-agent/src/main/java/com/example/triageagent/kafka/InvestigationKafkaProducer.java && grep -q 'triage.requests' triage-agent/src/main/java/com/example/triageagent/kafka/InvestigationKafkaProducer.java",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T16:04:11.385Z",
+          "completedAt": "2026-06-08T16:10:00.317Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T16:10:00.317Z"
+          }
+        },
+        {
+          "id": "step-3",
+          "index": 3,
+          "description": "Create InvestigationKafkaConsumer with @KafkaListener(topics='triage.requests', groupId='triage-agent'). On message receipt: load InvestigationJob from DB by ID, update status to RUNNING, call TriageOrchestratorService.investigate(), serialize report via InvestigationMapper, save reportJson back to the job row, and update status to COMPLETED or FAILED.",
+          "status": "verified",
+          "verification": {
+            "command": "test -f triage-agent/src/main/java/com/example/triageagent/kafka/InvestigationKafkaConsumer.java && grep -q '@KafkaListener' triage-agent/src/main/java/com/example/triageagent/kafka/InvestigationKafkaConsumer.java",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T16:10:37.260Z",
+          "completedAt": "2026-06-08T16:15:48.303Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T16:15:48.303Z"
+          }
+        },
+        {
+          "id": "step-4",
+          "index": 4,
+          "description": "Update TriageController: POST /api/triage/investigate returns ResponseEntity.status(202).body({investigationId, status, createdAt}). Add GET /api/triage/investigation/{id} returning ResponseEntity.ok({investigationId, question, status, createdAt, completedAt, report}) where report is populated only when status == COMPLETED.",
+          "status": "verified",
+          "verification": {
+            "command": "grep -q 'status(202)' triage-agent/src/main/java/com/example/triageagent/controller/TriageController.java && grep -q '@GetMapping.*investigation' triage-agent/src/main/java/com/example/triageagent/controller/TriageController.java",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T16:16:49.781Z",
+          "completedAt": "2026-06-08T16:24:58.541Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T16:24:58.541Z"
+          }
+        },
+        {
+          "id": "step-5",
+          "index": 5,
+          "description": "Add JUnit tests: verify POST returns 202 with job metadata; verify GET returns correct status and report for a seeded InvestigationJob; mock KafkaTemplate to assert message is sent to triage.requests. Update existing controller tests to not break.",
+          "status": "pending",
+          "verification": {
+            "command": "./gradlew :triage-agent:test --tests '*Controller*Test' --tests '*Kafka*Test' > /dev/null 2>&1",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T16:38:20.723Z"
+        },
+        {
+          "id": "step-6",
+          "index": 6,
+          "description": "Update scripts/triage-agent-smoke-test.sh: POST to /api/triage/investigate, extract investigationId, poll GET /api/triage/investigation/{id} every 5s for up to 60s until status is COMPLETED or FAILED, assert report contains .steps and .rootCause.",
+          "status": "pending",
+          "verification": {
+            "command": "bash -n scripts/triage-agent-smoke-test.sh && bash scripts/triage-agent-smoke-test.sh > /dev/null 2>&1",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-7",
+          "index": 7,
+          "description": "Run full build: ./gradlew :triage-agent:build and docker compose config to ensure nothing is broken after adding spring-kafka and JPA entities.",
+          "status": "pending",
+          "verification": {
+            "command": "./gradlew :triage-agent:build > /dev/null 2>&1 && docker compose config > /dev/null 2>&1",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        }
+      ],
+      "startedAt": "2026-06-08T15:58:40.428Z"
+    }
+  ],
+  "decisions": [],
+  "memories": [],
+  "createdAt": "2026-06-08T15:45:38.120Z",
+  "updatedAt": "2026-06-08T16:53:45.852Z",
+  "goal": "Make triage investigations asynchronous using Kafka and PostgreSQL. Change POST /api/triage/investigate from synchronous blocking to async: return 202 Accepted with investigation ID immediately, publish the request to a triage.requests Kafka topic, a @KafkaListener processes the investigation by running the 5-step loop, stores the TriageReport result in PostgreSQL, and clients poll GET /api/triage/investigations/{id} for status and results.",
+  "successCriteria": [
+    "spring-kafka added to triage-agent/build.gradle and compiles",
+    "InvestigationJob JPA entity and repository exist, backed by PostgreSQL",
+    "InvestigationKafkaProducer publishes investigation requests to 'triage.requests' topic",
+    "InvestigationKafkaConsumer with @KafkaListener consumes from 'triage.requests', runs the 5-step loop, and persists TriageReport to PostgreSQL with status COMPLETED or FAILED",
+    "POST /api/triage/investigate returns HTTP 202 with {investigationId, status, createdAt} immediately (no blocking)",
+    "GET /api/triage/investigation/{id} returns status and the TriageReport when completed",
+    "JUnit tests verify 202 response and Kafka produce/consume behavior",
+    "Smoke test submits investigation, polls to completion, and asserts structured report fields",
+    "Full build and docker compose config remain valid after all changes"
+  ],
+  "constraints": [
+    "Keep all changes within the triage-agent Gradle module",
+    "Do not modify Phase 0/1/2/3/4 services or infrastructure beyond adding necessary Kafka config",
+    "Follow existing package conventions (com.example.triageagent.*) and Gradle patterns",
+    "Preserve existing POST /api/triage/investigate endpoint path; only change response from 200 to 202 and add polling GET endpoint",
+    "The 5-step investigation loop must remain functionally identical, only the invocation mechanism changes from sync to async"
+  ],
+  "lastActiveAt": "2026-06-08T15:58:40.428Z",
+  "activePhaseId": "phase-1"
+}

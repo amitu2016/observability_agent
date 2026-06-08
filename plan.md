@@ -262,28 +262,39 @@ The **triage-agent** is a new Spring Boot service acting as an MCP client that o
 ### Known issues
 - **Spring AI 1.1.4 `extra_body` bug:** OpenAI rejects requests with an empty `extra_body` field. Worked around via `OpenAiExtraBodyWorkaround` (`RestClientCustomizer` that strips `extra_body` from outgoing JSON). Remove after upgrading to Spring AI ≥1.1.6 (see [spring-projects/spring-ai#5196](https://github.com/spring-projects/spring-ai/issues/5196)).
 
-## Phase 3 — Triage playbook (the investigation loop)
+## Phase 3 — Triage playbook (the investigation loop) ✅ COMPLETED
 
 Implement as a guided, ordered flow (state machine or structured prompt), not open ReAct.
 
-- [ ] **Scope:** from the alert/symptom, identify the affected service and time window.
-- [ ] **Metrics:** run scoped PromQL for that service/window; pull exemplar `trace_id`s
+- [x] **Scope:** from the alert/symptom, identify the affected service and time window.
+- [x] **Metrics:** run scoped PromQL for that service/window; pull exemplar `trace_id`s
       off the anomalous samples. Lean on Sift to detect error spikes / slow requests.
-- [ ] **Traces:** fetch those exact traces via the Jaeger tool; identify the failing
+- [x] **Traces:** fetch those exact traces via the Jaeger tool; identify the failing
       span or slow dependency.
-- [ ] **Logs:** pull Loki lines filtered by the same `trace_id`(s) around the error.
-- [ ] **Hypothesize:** rank likely root causes, each tied to specific evidence.
-- [ ] Make each step's inputs/outputs explicit so a run is reproducible and auditable.
+- [x] **Logs:** pull Loki lines filtered by the same `trace_id`(s) around the error.
+- [x] **Hypothesize:** rank likely root causes, each tied to specific evidence.
+- [x] Make each step's inputs/outputs explicit so a run is reproducible and auditable.
 
-## Phase 4 — Output
+## Phase 4 — Structured output ✅ COMPLETED
 
-- [ ] Produce a structured root-cause report: what happened, where (service/span),
+- [x] Produce a structured root-cause report: what happened, where (service/span),
       when (window), most-likely cause(s) with confidence, and the evidence chain.
-- [ ] Include **Grafana deep links** (generated via the MCP server) to the relevant
+- [x] Include **Grafana deep links** (generated via the MCP server) to the relevant
       dashboards/panels/Explore queries so a human can verify in one click.
-- [ ] Explicitly state what the agent did **not** check / could not determine.
+- [x] Explicitly state what the agent did **not** check / could not determine.
 
-## Phase 5 — Guardrails & self-observability
+### Async Investigation (Kafka)
+
+Investigations can be triggered asynchronously via Kafka, decoupling the HTTP request from the LLM pipeline.
+
+- `InvestigationJob` — JPA entity (`id`, `question`, `status`, `reportJson`, `createdAt`, `completedAt`).
+- `InvestigationJobRepository` — Spring Data JPA repository.
+- `InvestigationKafkaProducer` — `sendInvestigationRequest()` serializes and publishes to `triage.requests`.
+- `InvestigationKafkaConsumer` — `@KafkaListener` that sets status to `RUNNING`, executes `TriageOrchestratorService`, then `COMPLETED`/`FAILED`.
+- `TriageController` — `POST /api/triage/investigations` and `GET /api/triage/investigations/{id}`.
+- Unit tests: `InvestigationKafkaProducerTest` (6 tests) and `InvestigationKafkaConsumerTest` (10 tests).
+
+## Phase 5 — Guardrails & self-observability ⏳ NOT STARTED
 
 - [ ] Confirm `--disable-write` is enforced and the agent has no action tools.
 - [ ] Gate any incident-timeline/incident-creation write behind explicit human

@@ -1,0 +1,223 @@
+{
+  "id": "019ea739-eb1e-74bc-9fcb-99e90439a99f",
+  "name": "Build triage playbook and report",
+  "description": "Implement phase 3",
+  "status": "complete",
+  "worktree": {
+    "path": "/Users/amit/Developer/observability_agent",
+    "branch": "main",
+    "commit": "2bef04a9f5524ec3375a9da22245c2924f277b1d"
+  },
+  "scoping": {
+    "goal": {
+      "answer": "Implement Phase 3 (guided investigation loop) and Phase 4 (structured root-cause report) of the observability incident-triage agent. Transform the single-shot TriageService into a deterministic 5-step investigation state machine (Scope→Metrics→Traces→Logs→Hypothesize) that produces an auditable TriageReport with evidence, confidence scores, and Grafana deep links.",
+      "confirmedAt": "2026-06-08T13:06:25.553Z"
+    },
+    "criteria": {
+      "answer": "InvestigationStep interface and 5 concrete step classes exist and compile\nInvestigationState captures each step's tool calls, LLM prompts/responses, and timestamps\nTriageOrchestratorService runs the 5 steps sequentially in correct order\nScopeStep uses MCP discovery tools to identify relevant service and time window\nMetricsStep invokes query_prometheus via Grafana MCP and extracts anomalous trace_ids\nTraceStep invokes get_trace_by_id or search_traces via Jaeger MCP and identifies failing spans\nLogStep invokes query_loki_logs via Grafana MCP filtered by trace_ids\nHypothesisStep synthesizes evidence into ranked root causes with confidence scores\nPOST /api/triage/investigate returns structured TriageReport JSON with steps[], rootCause, confidence, deepLinks[], notChecked[]\nJUnit integration test verifies the investigation loop executes all 5 steps in order and produces TriageReport\nscripts/triage-agent-smoke-test.sh validates end-to-end flow and asserts structured response fields via jq",
+      "confirmedAt": "2026-06-08T13:06:25.553Z"
+    },
+    "constraints": {
+      "answer": "Spring Boot 3.4, Java 17, Spring AI 1.1.4, Read-only by design — investigation must never invoke Grafana MCP write tools (Sift writes are already disabled by --disable-write), Preserve existing Docker observability network and service names (http://mcp-grafana:8000, http://jaeger-mcp-service:8080), Follow existing package conventions (com.example.triageagent) and Gradle patterns, OpenAiExtraBodyWorkaround required for Spring AI 1.1.4, Backward compatible: existing /api/triage/investigate endpoint evolves from string to structured JSON response",
+      "confirmedAt": "2026-06-08T13:06:25.553Z"
+    },
+    "phases": {
+      "answer": "Build triage playbook and report",
+      "confirmedAt": "2026-06-08T13:06:25.553Z"
+    },
+    "assumptions": {
+      "answer": "OpenAI API key supplied at runtime via OPENAI_API_KEY env var. Phase 0/1 services are running before the investigation loop executes (Prometheus, Loki, Jaeger, Grafana MCP, Jaeger MCP); Spring AI MCP client SSE connections default to /sse endpoint; Grafana MCP and Jaeger MCP tools match Phase 1 schema; Deep-link generation depends on discovered Grafana datasource UIDs and dashboard UIDs from the MCP discovery step; Step-level tool calling and LLM interpretation use the same ChatClient + OpenAiExtraBodyWorkaround pattern already proven in Phase 2; The investigation loop is deterministic — the 5-step sequence is hardcoded, though each step uses LLM guidance to interpret tool results",
+      "confirmedAt": "2026-06-08T13:06:25.553Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-1",
+      "index": 1,
+      "name": "Build triage playbook and report",
+      "goal": "Create the guided triage playbook and structured output layer.",
+      "description": "A single vertical slice covering step abstractions, 5 investigation step classes, orchestrator wiring, structured report DTOs, controller update, integration tests, and smoke-test script updates.",
+      "parallel": false,
+      "status": "completed",
+      "steps": [
+        {
+          "id": "step-1",
+          "index": 1,
+          "description": "Create InvestigationStep interface and InvestigationState (audit trail container). Create step classes: ScopeStep, MetricsStep, TraceStep, LogStep, HypothesisStep. Each step has a step-specific system prompt, target method reading/writing InvestigationState, and captured tool-call audit entry. Directory: triage-agent/src/main/java/com/example/triageagent/investigation/",
+          "status": "verified",
+          "verification": {
+            "command": "test -f triage-agent/src/main/java/com/example/triageagent/investigation/InvestigationStep.java && test -f triage-agent/src/main/java/com/example/triageagent/investigation/InvestigationState.java && test -f triage-agent/src/main/java/com/example/triageagent/investigation/ScopeStep.java && test -f triage-agent/src/main/java/com/example/triageagent/investigation/MetricsStep.java && test -f triage-agent/src/main/java/com/example/triageagent/investigation/TraceStep.java && test -f triage-agent/src/main/java/com/example/triageagent/investigation/LogStep.java && test -f triage-agent/src/main/java/com/example/triageagent/investigation/HypothesisStep.java",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T13:52:53.025Z",
+          "completedAt": "2026-06-08T13:53:57.125Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T13:53:57.125Z"
+          }
+        },
+        {
+          "id": "step-2",
+          "index": 2,
+          "description": "Create TriageOrchestratorService that runs steps sequentially (scope→metrics→traces→logs→hypothesis). Inject ChatClient.Builder, ToolCallbackProviders, and a List<InvestigationStep>. Each step receives InvestigationState. Capture step name, tool calls, LLM prompts/responses, and timestamps for audit trail.",
+          "status": "verified",
+          "verification": {
+            "command": "test -f triage-agent/src/main/java/com/example/triageagent/service/TriageOrchestratorService.java",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T13:54:29.780Z",
+          "completedAt": "2026-06-08T14:00:48.044Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T14:00:48.044Z"
+          }
+        },
+        {
+          "id": "step-3",
+          "index": 3,
+          "description": "Create structured DTOs: InvestigationStepDTO, InvestigationStateDTO, TriageReport (rootCause, confidence, steps[], deepLinks[], notChecked[]). Add StepOutput class for captured tool results. Update TriageController to return ResponseEntity<TriageReport>.",
+          "status": "verified",
+          "verification": {
+            "command": "test -f triage-agent/src/main/java/com/example/triageagent/dto/TriageReport.java && test -f triage-agent/src/main/java/com/example/triageagent/dto/InvestigationStepDTO.java",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T14:01:16.556Z",
+          "completedAt": "2026-06-08T14:10:34.822Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T14:10:34.822Z"
+          }
+        },
+        {
+          "id": "step-4",
+          "index": 4,
+          "description": "Update controller and service wiring: ensure TriageController delegates to TriageOrchestratorService, returning TriageReport at POST /api/triage/investigate. Keep original endpoint path.",
+          "status": "verified",
+          "verification": {
+            "command": "grep -q 'TriageOrchestratorService' triage-agent/src/main/java/com/example/triageagent/controller/TriageController.java",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T14:11:55.739Z",
+          "completedAt": "2026-06-08T14:13:27.389Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T14:13:27.389Z"
+          }
+        },
+        {
+          "id": "step-5",
+          "index": 5,
+          "description": "Add JUnit integration test mocking ChatClient to simulate step progression, verifying all 5 steps execute in order and populate InvestigationState with mock data. Add test verifying JSON serialization of TriageReport.",
+          "status": "verified",
+          "verification": {
+            "command": "./gradlew :triage-agent:test --tests '*Investigation*Test' --tests '*Report*Test' > /dev/null 2>&1",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T15:04:06.783Z",
+          "completedAt": "2026-06-08T15:06:05.563Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T15:06:05.563Z"
+          }
+        },
+        {
+          "id": "step-6",
+          "index": 6,
+          "description": "Update scripts/triage-agent-smoke-test.sh to add jq assertions verifying response contains .steps, .rootCause, .confidence. Run smoke test against live stack.",
+          "status": "verified",
+          "verification": {
+            "command": "bash -n scripts/triage-agent-smoke-test.sh && bash scripts/triage-agent-smoke-test.sh > /dev/null 2>&1",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T15:07:15.248Z",
+          "completedAt": "2026-06-08T15:27:29.087Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T15:27:29.087Z"
+          }
+        },
+        {
+          "id": "step-7",
+          "index": 7,
+          "description": "Run full build: ensure ./gradlew :triage-agent:build passes and docker compose config remains valid after all changes.",
+          "status": "verified",
+          "verification": {
+            "command": "./gradlew :triage-agent:build > /dev/null 2>&1 && docker compose config > /dev/null 2>&1",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false,
+          "startedAt": "2026-06-08T15:28:06.073Z",
+          "completedAt": "2026-06-08T15:30:28.930Z",
+          "result": {
+            "success": true,
+            "exitCode": 0,
+            "stdout": "",
+            "stderr": "",
+            "completedAt": "2026-06-08T15:30:28.930Z"
+          }
+        }
+      ],
+      "startedAt": "2026-06-08T13:07:32.713Z",
+      "completedAt": "2026-06-08T15:31:45.308Z",
+      "summary": "Phase 1 complete. The investigation loop (Scope→Metrics→Traces→Logs→Hypothesize) and structured root-cause report are fully implemented. All 5 step classes run sequentially via TriageOrchestratorService, producing a TriageReport with steps, rootCause, confidence, deepLinks, and notChecked. 15 JUnit tests pass, smoke test passes against live stack with real OpenAI tool calls returning a structured report with 5 investigation steps and confidence=0.8."
+    }
+  ],
+  "decisions": [],
+  "memories": [],
+  "createdAt": "2026-06-08T12:34:11.358Z",
+  "updatedAt": "2026-06-08T15:34:59.023Z",
+  "goal": "Implement Phase 3 (guided investigation loop) and Phase 4 (structured root-cause report) of the observability incident-triage agent. Transform the single-shot TriageService into a deterministic 5-step investigation state machine (Scope→Metrics→Traces→Logs→Hypothesize) that produces an auditable TriageReport with evidence, confidence scores, and Grafana deep links.",
+  "successCriteria": [
+    "InvestigationStep interface and 5 concrete step classes exist and compile",
+    "InvestigationState captures each step's tool calls, LLM prompts/responses, and timestamps",
+    "TriageOrchestratorService runs the 5 steps sequentially in correct order",
+    "ScopeStep uses MCP discovery tools to identify relevant service and time window",
+    "MetricsStep invokes query_prometheus via Grafana MCP and extracts anomalous trace_ids",
+    "TraceStep invokes get_trace_by_id or search_traces via Jaeger MCP and identifies failing spans",
+    "LogStep invokes query_loki_logs via Grafana MCP filtered by trace_ids",
+    "HypothesisStep synthesizes evidence into ranked root causes with confidence scores",
+    "POST /api/triage/investigate returns structured TriageReport JSON with steps[], rootCause, confidence, deepLinks[], notChecked[]",
+    "JUnit integration test verifies the investigation loop executes all 5 steps in order and produces TriageReport",
+    "scripts/triage-agent-smoke-test.sh validates end-to-end flow and asserts structured response fields via jq"
+  ],
+  "constraints": [
+    "Spring Boot 3.4, Java 17, Spring AI 1.1.4",
+    "Read-only by design — investigation must never invoke Grafana MCP write tools (Sift writes are already disabled by --disable-write)",
+    "Preserve existing Docker observability network and service names (http://mcp-grafana:8000, http://jaeger-mcp-service:8080)",
+    "Follow existing package conventions (com.example.triageagent) and Gradle patterns",
+    "OpenAiExtraBodyWorkaround required for Spring AI 1.1.4",
+    "Backward compatible: existing /api/triage/investigate endpoint evolves from string to structured JSON response"
+  ],
+  "lastActiveAt": "2026-06-08T13:07:32.713Z"
+}

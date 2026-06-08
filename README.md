@@ -212,11 +212,12 @@ The agent receives a symptom description via REST API, then uses MCP tools to:
 4. Correlate evidence across metrics, traces, and logs
 5. Return a root-cause hypothesis with deep links
 
-### REST Endpoint
+### REST Endpoints
 
 ```
-POST /api/triage/investigate
-Content-Type: application/json
+POST /api/triage/investigate         — synchronous investigation (blocks until complete)
+POST /api/triage/investigations      — async investigation (returns immediately, runs via Kafka)
+GET  /api/triage/investigations/{id} — poll async investigation status & results
 ```
 
 Request body (`TriageRequest`):
@@ -226,10 +227,23 @@ Request body (`TriageRequest`):
 }
 ```
 
-Response body (`TriageResponse`):
+Response body (`TriageReport`):
 ```json
 {
-  "answer": "The error rate for caller-service..."
+  "question": "error rate for caller-service in the last 15 min",
+  "service": "caller-service",
+  "timeWindow": "15m",
+  "rootCause": "Significant drop in request processing for status '202'...",
+  "confidence": 0.8,
+  "steps": [
+    { "stepName": "scope", "status": "success", "summary": "Identified service caller-service and time window 15m", "toolCalls": [], "durationMs": 0 },
+    { "stepName": "metrics", "status": "success", "summary": "Queried PromQL and found anomalous results...", "toolCalls": [], "durationMs": 0 },
+    { "stepName": "traces", "status": "success", "summary": "Fetched traces via Jaeger...", "toolCalls": [], "durationMs": 0 },
+    { "stepName": "logs", "status": "success", "summary": "Retrieved log lines from Loki...", "toolCalls": [], "durationMs": 0 },
+    { "stepName": "hypothesis", "status": "success", "summary": "Root cause hypothesis...", "toolCalls": [], "durationMs": 0 }
+  ],
+  "deepLinks": ["http://localhost:3000/explore?orgId=1&left=%7B%22datasource%22..."],
+  "notChecked": ["Trace correlation with Kafka consumer lag", "Database connection pool saturation"]
 }
 ```
 
@@ -319,6 +333,88 @@ This script:
 6. Verifies both MCP servers are still healthy
 
 All queries must return non-empty data for the smoke test to pass.
+
+## Phase 4b — Async Investigation via Kafka
+
+Investigations can also be triggered asynchronously, decoupling the HTTP request from the long-running LLM pipeline.
+
+### REST Endpoints
+
+**Submit an async investigation:**
+```bash
+curl -X POST http://localhost:8084/api/triage/investigations \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What is the error rate for caller-service in the last 15 minutes?"}' \
+  | jq .
+```
+
+Response (immediately, while investigation runs in background):
+```json
+{
+  "investigationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "question": "What is the error rate for caller-service in the last 15 minutes?",
+  "status": "PENDING"
+}
+```
+
+**Poll for results:**
+```bash
+curl -s http://localhost:8084/api/triage/investigations/a1b2c3d4-e5f6-7890-abcd-ef1234567890 | jq .
+```
+
+Response when completed:
+```json
+{
+  "investigationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "question": "What is the error rate for caller-service in the last 15 minutes?",
+  "status": "COMPLETED",
+  "report": {
+    "service": "caller-service",
+    "timeWindow": "15m",
+    "rootCause": "Significant drop in request processing...",
+    "confidence": 0.8,
+    "steps": [...],
+    "deepLinks": [...],
+    "notChecked": [...]
+  }
+}
+```
+
+### Architecture
+
+```
+POST /api/triage/investigations
+  ↓  create PENDING job in PostgreSQL
+  ↓  publish to Kafka topic triage.requests
+Kafka ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+  ↓
+@KafkaListener (triage-agent)
+  ↓  load job, set RUNNING
+  ↓  TriageOrchestratorService.investigate()
+  ↓  save COMPLETED + report JSON
+GET /api/triage/investigations/{id}
+  ↓  return status + report (if ready)
+```
+
+### Implementation
+
+- `InvestigationJob` — JPA entity (`id`, `question`, `status`, `reportJson`, `createdAt`, `completedAt`).
+- `InvestigationJobRepository` — Spring Data JPA.
+- `InvestigationKafkaProducer` — publishes `InvestigationRequestEvent` to `triage.requests`.
+- `InvestigationKafkaConsumer` — consumes, runs investigation, updates job status.
+- `TriageController` — exposes `POST /api/triage/investigations` and `GET /api/triage/investigations/{id}`.
+
+## Test Suite
+
+All tests pass (`./gradlew test`):
+
+- `TriageAgentApplicationTest` — Spring context loads successfully (H2 embedded database).
+- `TriageControllerTest` — WebMvcTest for REST endpoints (sync + async).
+- `TriageOrchestratorTest` — Step ordering and error resilience.
+- `InvestigationMapperTest` — State → report mapping.
+- `InvestigationKafkaProducerTest` — 6 tests for Kafka publishing.
+- `InvestigationKafkaConsumerTest` — 10 tests for Kafka consumption and job lifecycle.
+- `TriageServiceTest` — ChatClient prompt construction.
 
 ## Technology Stack
 

@@ -1,10 +1,12 @@
 package com.example.triageagent;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
-import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -17,7 +19,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
     "spring.ai.mcp.client.enabled=false",
     "spring.ai.openai.api-key=dummy-test-key"
 })
+@ActiveProfiles("test")
 class TriageAgentApplicationTest {
+
+    // Mock ChatClient since steps depend on it but MCP tools are disabled in test
+    @MockBean
+    private ChatClient chatClient;
 
     @Autowired
     private ApplicationContext applicationContext;
