@@ -55,6 +55,35 @@ services:
     networks:
       - observability
 
+  mcp-grafana:
+    image: grafana/mcp-grafana:latest
+    ports:
+      - "8000:8000"
+    environment:
+      GRAFANA_URL: http://grafana:3000
+      GRAFANA_USERNAME: admin
+      GRAFANA_PASSWORD: admin
+    command:
+      - '--disable-write'
+      - '--address'
+      - ':8000'
+    depends_on:
+      - grafana
+    networks:
+      - observability
+
+  jaeger-mcp-service:
+    build:
+      context: ./jaeger-mcp-service
+    ports:
+      - "8083:8080"
+    environment:
+      JAEGER_BASE_URL: http://jaeger:16686
+    depends_on:
+      - jaeger
+    networks:
+      - observability
+
   promtail:
     image: grafana/promtail:2.9.1
     volumes:

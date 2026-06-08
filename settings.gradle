@@ -6,3 +6,6 @@ if (file('caller-service/build.gradle').exists()) {
 if (file('downstream-service/build.gradle').exists()) {
     include 'downstream-service'
 }
+if (file('jaeger-mcp-service/build.gradle').exists()) {
+    include 'jaeger-mcp-service'
+}
