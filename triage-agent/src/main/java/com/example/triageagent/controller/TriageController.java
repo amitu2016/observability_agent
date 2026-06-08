@@ -50,8 +50,11 @@ public class TriageController {
         // 3. Return 202 Accepted with job metadata
         InvestigationJobResponse response = new InvestigationJobResponse(
                 job.getId().toString(),
+                job.getQuestion(),
                 job.getStatus().name(),
-                job.getCreatedAt().toString()
+                job.getCreatedAt().toString(),
+                null,
+                null
         );
         return ResponseEntity.status(202).body(response);
     }
