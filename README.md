@@ -215,9 +215,8 @@ The agent receives a symptom description via REST API, then uses MCP tools to:
 ### REST Endpoints
 
 ```
-POST /api/triage/investigate         — synchronous investigation (blocks until complete)
-POST /api/triage/investigations      — async investigation (returns immediately, runs via Kafka)
-GET  /api/triage/investigations/{id} — poll async investigation status & results
+POST /api/triage/investigate         — submit investigation (async, returns 202 immediately)
+GET  /api/triage/investigation/{id}  — poll investigation status & results
 ```
 
 Request body (`TriageRequest`):
@@ -342,7 +341,7 @@ Investigations can also be triggered asynchronously, decoupling the HTTP request
 
 **Submit an async investigation:**
 ```bash
-curl -X POST http://localhost:8084/api/triage/investigations \
+curl -X POST http://localhost:8084/api/triage/investigate \
   -H 'Content-Type: application/json' \
   -d '{"question":"What is the error rate for caller-service in the last 15 minutes?"}' \
   | jq .
@@ -359,7 +358,7 @@ Response (immediately, while investigation runs in background):
 
 **Poll for results:**
 ```bash
-curl -s http://localhost:8084/api/triage/investigations/a1b2c3d4-e5f6-7890-abcd-ef1234567890 | jq .
+curl -s http://localhost:8084/api/triage/investigation/a1b2c3d4-e5f6-7890-abcd-ef1234567890 | jq .
 ```
 
 Response when completed:
@@ -383,7 +382,7 @@ Response when completed:
 ### Architecture
 
 ```
-POST /api/triage/investigations
+POST /api/triage/investigate
   ↓  create PENDING job in PostgreSQL
   ↓  publish to Kafka topic triage.requests
 Kafka ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
@@ -392,7 +391,7 @@ Kafka ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ �
   ↓  load job, set RUNNING
   ↓  TriageOrchestratorService.investigate()
   ↓  save COMPLETED + report JSON
-GET /api/triage/investigations/{id}
+GET /api/triage/investigation/{id}
   ↓  return status + report (if ready)
 ```
 
@@ -402,7 +401,7 @@ GET /api/triage/investigations/{id}
 - `InvestigationJobRepository` — Spring Data JPA.
 - `InvestigationKafkaProducer` — publishes `InvestigationRequestEvent` to `triage.requests`.
 - `InvestigationKafkaConsumer` — consumes, runs investigation, updates job status.
-- `TriageController` — exposes `POST /api/triage/investigations` and `GET /api/triage/investigations/{id}`.
+- `TriageController` — exposes `POST /api/triage/investigate` and `GET /api/triage/investigation/{id}`.
 
 ## Test Suite
 
