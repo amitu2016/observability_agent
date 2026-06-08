@@ -23,6 +23,8 @@ caller-service (port 8081) → downstream-service (port 8082)
     Grafana MCP Server (port 8000)  ←  mcp-grafana --disable-write
          ↓
     Jaeger MCP Server (port 8083)   ←  custom Spring AI MCP server
+         ↓
+    Triage Agent (port 8084)        ←  Spring AI MCP client + OpenAI
 
 Metrics: caller/downstream → Prometheus (port 9090) with Exemplar trace_id
 Infrastructure: Kafka (port 9092), PostgreSQL (port 5432)
@@ -47,7 +49,7 @@ Infrastructure: Kafka (port 9092), PostgreSQL (port 5432)
 docker compose up -d --build
 ```
 
-This starts all 11 containers:
+This starts all 12 containers:
 - `jaeger` — Jaeger all-in-one (traces)
 - `prometheus` — Prometheus with exemplar storage enabled
 - `loki` — Loki log aggregation
@@ -59,6 +61,7 @@ This starts all 11 containers:
 - `caller-service` — Banking Transfer API with Kafka consumer
 - `downstream-service` — Axon Account Aggregate with Kafka publisher
 - `jaeger-mcp-service` — Custom Jaeger trace MCP server
+- `triage-agent` — AI triage agent (MCP client + OpenAI)
 
 ## Create an Account
 
@@ -177,6 +180,7 @@ docker exec -it observability_agent-kafka-1 kafka-console-consumer --bootstrap-s
 | PostgreSQL         | localhost:5432                     | appuser / secret    |
 | **mcp-grafana**    | **http://localhost:8000**          | (no auth)           |
 | **jaeger-mcp-service** | **http://localhost:8083**      | (no auth)           |
+| **triage-agent**       | **http://localhost:8084**      | (no auth)           |
 
 ## Environment Variables
 
@@ -194,6 +198,63 @@ Both services are configured with:
 | `POSTGRES_USER`               | `appuser`                                 |
 | `POSTGRES_PASSWORD`           | `secret`                                  |
 | `KAFKA_BOOTSTRAP_SERVERS`     | `kafka:29092`                             |
+
+## Phase 2 — Triage Agent
+
+The triage agent (`triage-agent`) is a Spring AI MCP client that uses OpenAI GPT-4o to orchestrate incident investigation across the observability stack.
+
+### Overview
+
+The agent receives a symptom description via REST API, then uses MCP tools to:
+1. List available metrics, labels, and datasources (grounding)
+2. Query Prometheus for anomalous metrics in the affected time window
+3. Fetch traces via the Jaeger MCP server
+4. Correlate evidence across metrics, traces, and logs
+5. Return a root-cause hypothesis with deep links
+
+### REST Endpoint
+
+```
+POST /api/triage/investigate
+Content-Type: application/json
+```
+
+Request body (`TriageRequest`):
+```json
+{
+  "question": "error rate for caller-service in the last 15 min"
+}
+```
+
+Response body (`TriageResponse`):
+```json
+{
+  "answer": "The error rate for caller-service..."
+}
+```
+
+### Test Endpoints
+
+**Health check:**
+```bash
+curl -s http://localhost:8084/actuator/health | jq .
+```
+
+**Simple triage question (quick test):**
+```bash
+curl -X POST http://localhost:8084/api/triage/investigate \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What is the error rate for caller-service in the last 15 minutes?"}' \
+  | jq .
+```
+
+**Investigate latency spike:**
+```bash
+curl -X POST http://localhost:8084/api/triage/investigate \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"High latency on caller-service"}' \
+  | jq .
+```
 
 ## Phase 1 — Read-only Query Layer
 
@@ -273,3 +334,5 @@ All queries must return non-empty data for the smoke test to pass.
 - **Logstash Logback Encoder** — JSON logs with trace context
 - **Grafana + Loki + Promtail** — log aggregation
 - **Jaeger** — distributed tracing
+- **Spring AI MCP client** — MCP client for tool orchestration
+- **OpenAI GPT-4o** — LLM for triage reasoning

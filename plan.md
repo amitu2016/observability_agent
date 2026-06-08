@@ -30,7 +30,7 @@ root-cause report with deep links to the supporting data.
 - **Instrumentation:** OpenTelemetry (OTel) Java agent + SDK.
 - **Dashboards / query gateway:** Grafana, fronted by the **Grafana MCP server**
   (`mcp-grafana`, run with `--disable-write`).
-- **Model:** an Anthropic Claude model via Spring AI (final model choice is an open decision).
+- **Model:** OpenAI GPT-4o via `spring-ai-starter-model-openai` (initially planned for Anthropic Claude model, switched after human direction).
 
 ---
 
@@ -208,17 +208,59 @@ GET /transfers/{id} → COMPLETED
 - `scripts/verify-mcp-tools.sh` — health + SSE + tool registration checks
 - `scripts/smoke-test.sh` — end-to-end PromQL/LogQL/trace verification
 
-## Phase 2 — Agent skeleton
+## Phase 2 — Agent skeleton ✅ COMPLETED
 
-- [ ] Create a Spring Boot service with Spring AI configured as an **MCP client**
+### Implementation
+
+The **triage-agent** is a new Spring Boot service acting as an MCP client that orchestrates investigation across the observability stack.
+
+**New Gradle module:** `triage-agent/`
+
+**Dependencies:**
+- `spring-ai-starter-mcp-client` — MCP client transport (SSE)
+- `spring-ai-starter-model-openai` — OpenAI GPT-4o model (switched from initial Anthropic Claude plan per human direction)
+
+**Configuration** (`triage-agent/src/main/resources/application.yml`):
+- SSE connection to Grafana MCP: `http://mcp-grafana:8000`
+- SSE connection to Jaeger MCP: `http://jaeger-mcp-service:8080`
+- `spring.ai.mcp.client.toolcallback.enabled: true`
+- `OPENAI_API_KEY` environment variable required
+
+**Core classes:**
+- `TriageService` — Orchestrates the investigation; uses a grounding system prompt that pre-populates available discovery tools (`list_prometheus_metric_names`, `list_prometheus_label_names`, `list_prometheus_label_values`, `list_datasources`) so the model cannot hallucinate metric/datasource names.
+- `TriageController` — Exposes `POST /api/triage/investigate` REST endpoint.
+
+**Known workaround:** `OpenAiExtraBodyWorkaround` strips `extra_body` from outgoing OpenAI JSON requests due to [spring-ai#5196](https://github.com/spring-projects/spring-ai/issues/5196), required for Spring AI 1.1.4.
+
+**Docker:** `triage-agent/Dockerfile` (eclipse-temurin:17-jre), added to `docker-compose.yml` (port `8084:8080`, depends on `mcp-grafana` and `jaeger-mcp-service`).
+
+**Tests:**
+- `TriageAgentApplicationTest` — Verifies Spring context loads successfully
+- `TriageControllerTest` — WebMvcTest verifying `/api/triage/investigate` endpoint
+
+**Smoke test:** `scripts/triage-agent-smoke-test.sh` — Posts a sample investigation request and validates response structure.
+
+### Checklist
+- [x] Create a Spring Boot service with Spring AI configured as an **MCP client**
       pointed at the Grafana MCP server (and registering the custom Jaeger tool).
-- [ ] Wire the Anthropic Claude model through Spring AI.
-- [ ] Implement **grounding tools/context**: list available metric names, label
+- [x] Wire the OpenAI GPT-4o model through Spring AI (via `spring-ai-starter-model-openai`; switched from initial Anthropic Claude plan per human direction).
+- [x] Implement **grounding tools/context**: list available metric names, label
       names/values, and the service inventory; supply them to the model before
       query generation.
-- [ ] Add a smoke test: ask the agent a trivial scoped question ("error rate for
+- [x] Add a smoke test: ask the agent a trivial scoped question ("error rate for
       service X in the last 15 min") and confirm it produces a valid PromQL call
       and a correct answer.
+
+### Verification (executed)
+1. **Build:** `./gradlew :triage-agent:bootJar` produces a runnable JAR.
+2. **Docker:** `docker compose up -d --build triage-agent` starts the container on port `8084`.
+3. **Health:** `curl http://localhost:8084/actuator/health` returns `200`.
+4. **MCP connections:** Container logs show successful SSE initialization to both Grafana MCP and Jaeger MCP servers.
+5. **Smoke test:** `bash scripts/triage-agent-smoke-test.sh` passes (HTTP 200 from `/api/triage/investigate` with non-empty response body).
+6. **Unit tests:** `./gradlew :triage-agent:test` passes (`TriageAgentApplicationTest`, `TriageControllerTest`).
+
+### Known issues
+- **Spring AI 1.1.4 `extra_body` bug:** OpenAI rejects requests with an empty `extra_body` field. Worked around via `OpenAiExtraBodyWorkaround` (`RestClientCustomizer` that strips `extra_body` from outgoing JSON). Remove after upgrading to Spring AI ≥1.1.6 (see [spring-projects/spring-ai#5196](https://github.com/spring-projects/spring-ai/issues/5196)).
 
 ## Phase 3 — Triage playbook (the investigation loop)
 
@@ -257,7 +299,7 @@ Implement as a guided, ordered flow (state machine or structured prompt), not op
 
 - **Jaeger vs Tempo for traces.** Staying on Jaeger (custom tool) for now; revisit
   migrating to Tempo to unify everything under the Grafana MCP server.
-- **Model selection** (which Claude model) and cost/latency budget per triage run.
+- ~~**Model selection** (which Claude model)~~ — Resolved: OpenAI GPT-4o selected (per human direction). Cost/latency budget still open.
 - **Trigger mechanism:** does the agent run on alert webhook (Alertmanager/Grafana),
   on a chat command, or both?
 - **Deployment target** for the agent and the MCP server (e.g. Kubernetes namespace).
