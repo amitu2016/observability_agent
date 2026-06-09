@@ -16,6 +16,8 @@ public class InvestigationState {
     // Discovered by ScopeStep
     private List<String> discoveredMetrics = new ArrayList<>();
     private List<String> discoveredLabels = new ArrayList<>();
+    private String prometheusUid;
+    private String lokiUid;
 
     // Produced by MetricsStep
     private List<String> anomalousMetricResults = new ArrayList<>();
@@ -52,6 +54,12 @@ public class InvestigationState {
 
     public List<String> getDiscoveredLabels() { return discoveredLabels; }
     public void setDiscoveredLabels(List<String> discoveredLabels) { this.discoveredLabels = discoveredLabels != null ? discoveredLabels : new ArrayList<>(); }
+
+    public String getPrometheusUid() { return prometheusUid; }
+    public void setPrometheusUid(String prometheusUid) { this.prometheusUid = prometheusUid; }
+
+    public String getLokiUid() { return lokiUid; }
+    public void setLokiUid(String lokiUid) { this.lokiUid = lokiUid; }
 
     public List<String> getAnomalousMetricResults() { return anomalousMetricResults; }
     public void setAnomalousMetricResults(List<String> anomalousMetricResults) { this.anomalousMetricResults = anomalousMetricResults != null ? anomalousMetricResults : new ArrayList<>(); }

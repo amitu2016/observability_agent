@@ -16,14 +16,23 @@ public class MetricsStep implements InvestigationStep {
     private static final Logger log = LoggerFactory.getLogger(MetricsStep.class);
 
     private static final String SYSTEM_PROMPT = """
-            You are a PromQL assistant. Use the `query_prometheus` tool to run scoped queries
-            for the given service and time window against the discovered metrics.
+            You are a PromQL assistant. Use the `query_prometheus` tool to run scoped queries.
 
-            For each metric:
-            - Run a PromQL query scoped to the service name and time window.
-            - Look for anomalous values (high error rates, latency spikes, drops in throughput).
-            - Extract any `trace_id` exemplars or OpenTelemetry trace references embedded in
-              the metric results.
+            IMPORTANT: The user prompt contains the exact Prometheus datasource UID to use.
+            Always use that UID when calling query_prometheus — never guess or use a placeholder.
+
+            Always run these mandatory baseline queries for the given service, regardless of
+            what metrics were discovered:
+            1. http_server_requests_seconds_count{status=~"5..",service="{service}"}
+            2. http_server_requests_seconds_count{status=~"4..",service="{service}"}
+            3. http_server_requests_seconds_sum{service="{service}"} (for latency)
+
+            Then also query any additional discovered metrics listed in the user prompt.
+
+            For each result:
+            - Report non-zero 5xx/4xx counts as anomalies with their error/exception labels.
+            - Extract any `trace_id` exemplars or OpenTelemetry trace references.
+            - Zero values for error metrics = no anomaly for that metric.
 
             Return ONLY a JSON object with this exact shape — no extra text:
             {
@@ -63,7 +72,7 @@ public class MetricsStep implements InvestigationStep {
         audit.setModelResponse(response);
 
         try {
-            JsonNode root = objectMapper.readTree(response);
+            JsonNode root = objectMapper.readTree(InvestigationStep.extractJson(response));
 
             List<String> promqlResults = new ArrayList<>();
             if (root.has("promqlResults") && root.get("promqlResults").isArray()) {
@@ -94,6 +103,7 @@ public class MetricsStep implements InvestigationStep {
     private String buildUserPrompt(InvestigationState state) {
         StringBuilder sb = new StringBuilder();
         sb.append("Run PromQL queries for the following scope:\n\n");
+        sb.append("- Prometheus datasource UID: ").append(state.getPrometheusUid() != null ? state.getPrometheusUid() : "unknown — call list_datasources first").append("\n");
         sb.append("- Service: ").append(state.getService() != null ? state.getService() : "unknown").append("\n");
         sb.append("- Time window: ").append(state.getTimeWindow() != null ? state.getTimeWindow() : "15m").append("\n");
         sb.append("- Discovered metrics:\n");

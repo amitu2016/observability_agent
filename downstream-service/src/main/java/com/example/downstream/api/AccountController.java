@@ -2,11 +2,15 @@ package com.example.downstream.api;
 
 import com.example.downstream.domain.command.CreateAccountCommand;
 import com.example.downstream.domain.command.TransferFundsCommand;
+import com.example.downstream.query.AccountEntity;
+import com.example.downstream.query.AccountRepository;
+import java.util.List;
 import java.util.UUID;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,9 +24,16 @@ public class AccountController {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(AccountController.class);
 
     private final CommandGateway commandGateway;
+    private final AccountRepository accountRepository;
 
-    public AccountController(CommandGateway commandGateway) {
+    public AccountController(CommandGateway commandGateway, AccountRepository accountRepository) {
         this.commandGateway = commandGateway;
+        this.accountRepository = accountRepository;
+    }
+
+    @GetMapping
+    public List<AccountEntity> getAllAccounts() {
+        return accountRepository.findAll();
     }
 
     @PostMapping

@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,8 +18,17 @@ public class LogStep implements InvestigationStep {
     private static final Logger log = LoggerFactory.getLogger(LogStep.class);
 
     private static final String SYSTEM_PROMPT = """
-            You are a log analysis assistant. Use the `query_loki_logs` tool to fetch logs
-            filtered by trace_id and service name.
+            You are a log analysis assistant. Use the `query_loki_logs` tool to fetch logs.
+
+            IMPORTANT stream selector — all services log to this fixed pattern:
+              {job="java-logs", filename="/var/log/app/{service-name}.log"}
+            For example, for downstream-service use:
+              {job="java-logs", filename="/var/log/app/downstream-service.log"}
+            Never use {job="downstream-service"} or any other label — it will return nothing.
+
+            IMPORTANT: The user prompt contains the exact Loki datasource UID and RFC3339 start/end
+            timestamps to use. Always use those values when calling query_loki_logs — never guess,
+            compute, or use placeholder values like "now-15m".
 
             Focus on:
             - ERROR and WARN level lines within the time window
@@ -62,7 +73,7 @@ public class LogStep implements InvestigationStep {
         audit.setModelResponse(response);
 
         try {
-            JsonNode root = objectMapper.readTree(response);
+            JsonNode root = objectMapper.readTree(InvestigationStep.extractJson(response));
 
             List<String> logLines = new ArrayList<>();
             if (root.has("logLines") && root.get("logLines").isArray()) {
@@ -91,10 +102,16 @@ public class LogStep implements InvestigationStep {
     }
 
     private String buildUserPrompt(InvestigationState state) {
+        long windowMinutes = parseWindowMinutes(state.getTimeWindow());
+        Instant end = Instant.now();
+        Instant start = end.minus(windowMinutes, ChronoUnit.MINUTES);
+
         StringBuilder sb = new StringBuilder();
         sb.append("Fetch and analyze logs for the following context:\n\n");
+        sb.append("- Loki datasource UID: ").append(state.getLokiUid() != null ? state.getLokiUid() : "unknown — call list_datasources first").append("\n");
         sb.append("- Service: ").append(state.getService() != null ? state.getService() : "unknown").append("\n");
-        sb.append("- Time window: ").append(state.getTimeWindow() != null ? state.getTimeWindow() : "15m").append("\n");
+        sb.append("- Start time (RFC3339): ").append(start).append("\n");
+        sb.append("- End time (RFC3339): ").append(end).append("\n");
         sb.append("- Trace IDs from metric exemplars:\n");
         for (String id : state.getExemplarTraceIds()) {
             sb.append("  - ").append(id).append("\n");
@@ -103,5 +120,14 @@ public class LogStep implements InvestigationStep {
             sb.append("  (none — filter by service name only)\n");
         }
         return sb.toString();
+    }
+
+    private long parseWindowMinutes(String timeWindow) {
+        if (timeWindow == null) return 15;
+        try {
+            if (timeWindow.endsWith("m")) return Long.parseLong(timeWindow.replace("m", ""));
+            if (timeWindow.endsWith("h")) return Long.parseLong(timeWindow.replace("h", "")) * 60;
+        } catch (NumberFormatException ignored) {}
+        return 15;
     }
 }

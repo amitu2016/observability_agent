@@ -2,6 +2,7 @@ package com.example.caller.transfer;
 
 import io.opentelemetry.api.trace.Span;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,13 @@ public class TransferController {
     public TransferController(TransferRepository transferRepository, RestClient.Builder restClientBuilder) {
         this.transferRepository = transferRepository;
         this.downstreamClient = restClientBuilder.baseUrl("http://downstream-service:8080").build();
+    }
+
+    @GetMapping
+    public List<TransferResponse> getAllTransfers() {
+        return transferRepository.findAll().stream()
+                .map(t -> new TransferResponse(t.getId(), t.getStatus().name(), null))
+                .toList();
     }
 
     @PostMapping

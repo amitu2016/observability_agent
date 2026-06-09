@@ -63,7 +63,7 @@ public class TraceStep implements InvestigationStep {
         audit.setModelResponse(response);
 
         try {
-            JsonNode root = objectMapper.readTree(response);
+            JsonNode root = objectMapper.readTree(InvestigationStep.extractJson(response));
 
             List<String> traceDetails = new ArrayList<>();
             if (root.has("traceDetails") && root.get("traceDetails").isArray()) {

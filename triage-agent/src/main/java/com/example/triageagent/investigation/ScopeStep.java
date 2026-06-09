@@ -19,22 +19,34 @@ public class ScopeStep implements InvestigationStep {
             You are a discovery assistant for production incidents.
 
             Use the following MCP tools to understand the environment before returning results:
-            1. list_datasources — to find available Grafana datasources
-            2. list_prometheus_metric_names — to discover metrics related to the symptom
+            1. list_datasources — to find available Grafana datasources and their UIDs
+            2. list_prometheus_metric_names — to discover metrics related to the symptom (use the real Prometheus datasource UID from step 1)
             3. list_prometheus_label_names and list_prometheus_label_values — to understand label taxonomy
 
             Identify:
             - The affected service name from the user's symptom
             - The relevant time window (e.g., "15m", "1h")
-            - Relevant metric names
-            - Relevant label names
+            - The UID of the Prometheus datasource (type=prometheus) from list_datasources
+            - The UID of the Loki datasource (type=loki) from list_datasources
+
+            For relevantMetrics, include ONLY metrics that directly signal errors or degradation:
+            - HTTP error rates and status codes (e.g. http_server_requests_seconds_count with status=5xx)
+            - Exception and error counters (e.g. exception_count, error_count)
+            - Request latency percentiles (e.g. http_server_requests_seconds_max/sum)
+            - Explicitly named failure or timeout metrics
+
+            Do NOT include: executor_*, disk_*, jvm_*, process_*, system_*, application_started_*,
+            application_ready_*, logback_*, hikaricp_*, spring_kafka_*, or any metric that measures
+            normal operational bookkeeping rather than user-facing error signals.
 
             Return ONLY a JSON object with this exact shape — no extra text:
             {
               "service": "string or null",
               "timeWindow": "string (e.g. '15m') or null",
               "relevantMetrics": ["metric_name1", "metric_name2"],
-              "relevantLabels": ["label_name1", "label_name2"]
+              "relevantLabels": ["label_name1", "label_name2"],
+              "prometheusUid": "uid from list_datasources for the prometheus datasource",
+              "lokiUid": "uid from list_datasources for the loki datasource"
             }
             """;
 
@@ -69,7 +81,7 @@ public class ScopeStep implements InvestigationStep {
         audit.setModelResponse(response);
 
         try {
-            JsonNode root = objectMapper.readTree(response);
+            JsonNode root = objectMapper.readTree(InvestigationStep.extractJson(response));
 
             String service = safeText(root, "service");
             String timeWindow = safeText(root, "timeWindow");
@@ -84,13 +96,18 @@ public class ScopeStep implements InvestigationStep {
                 root.get("relevantLabels").forEach(n -> labels.add(n.asText()));
             }
 
+            String prometheusUid = safeText(root, "prometheusUid");
+            String lokiUid = safeText(root, "lokiUid");
+
             state.setService(service);
             state.setTimeWindow(timeWindow);
             state.setDiscoveredMetrics(metrics);
             state.setDiscoveredLabels(labels);
+            state.setPrometheusUid(prometheusUid);
+            state.setLokiUid(lokiUid);
 
-            log.info("[ScopeStep] Parsed — service={}, timeWindow={}, metrics={}, labels={}",
-                    service, timeWindow, metrics, labels);
+            log.info("[ScopeStep] Parsed — service={}, timeWindow={}, metrics={}, labels={}, prometheusUid={}, lokiUid={}",
+                    service, timeWindow, metrics, labels, prometheusUid, lokiUid);
 
         } catch (Exception e) {
             log.warn("[ScopeStep] JSON parse failed, storing raw response: {}", e.getMessage());

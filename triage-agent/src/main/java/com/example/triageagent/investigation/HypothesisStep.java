@@ -16,25 +16,31 @@ public class HypothesisStep implements InvestigationStep {
     private static final Logger log = LoggerFactory.getLogger(HypothesisStep.class);
 
     private static final String SYSTEM_PROMPT = """
-            You are a root-cause analysis assistant. Synthesize all evidence collected by the
-            previous investigation steps to produce ranked hypotheses.
+            You are a root-cause analysis assistant. Synthesize only the evidence collected by the
+            previous investigation steps — do not infer problems that are not supported by data.
 
-            For each hypothesis include:
-            - The likely root cause (service/component level)
-            - The specific failure mechanism
-            - Supporting evidence from metrics, traces, and logs
+            Rules:
+            - Only assert a root cause when there is concrete evidence: non-zero HTTP 5xx error rates,
+              elevated latency, error log lines, or failing spans. Zero values, empty results,
+              and missing data are NOT evidence of a problem.
+            - If metrics are all zero/normal and logs/traces are empty, set rootCause to
+              "No anomaly detected — all signals appear normal" and confidence to 0.0.
+            - Never invent a root cause from idle metrics (zero active threads, zero pool size,
+              zero disk usage change, etc.) — these are normal baseline values.
+            - A Kafka consumer rebalance count of 1 is normal at service startup — do not flag it
+              as a problem unless the count is continuously increasing or paired with consumer lag.
+            - Confidence must reflect the strength of actual evidence: 0.0 if no anomaly,
+              0.5 if weak/ambiguous signals, 0.8+ only if there is clear sustained error evidence.
 
-            Use the `generate_deeplink` tool to create Grafana deep links to:
-            - Explore view for the relevant service and time window
-            - Dashboard panels that surface the anomaly
+            Use the `generate_deeplink` tool to create Grafana deep links to relevant views.
 
             Explicitly list what you did NOT check (e.g., network policies, secrets rotation,
             dependency health, deployment events) so the operator knows what else to investigate.
 
             Return ONLY a JSON object with this exact shape — no extra text:
             {
-              "rootCause": "string describing the most likely root cause",
-              "confidence": 0.85,
+              "rootCause": "string describing the most likely root cause, or 'No anomaly detected — all signals appear normal'",
+              "confidence": 0.0,
               "deepLinks": ["https://grafana.example.com/explore?...", "..."],
               "notChecked": ["thing you could not verify", "..."]
             }
@@ -71,7 +77,7 @@ public class HypothesisStep implements InvestigationStep {
         audit.setModelResponse(response);
 
         try {
-            JsonNode root = objectMapper.readTree(response);
+            JsonNode root = objectMapper.readTree(InvestigationStep.extractJson(response));
 
             String rootCause = safeText(root, "rootCause");
             double confidence = root.has("confidence") ? root.get("confidence").asDouble() : 0.0;

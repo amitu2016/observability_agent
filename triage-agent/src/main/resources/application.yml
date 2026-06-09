@@ -20,7 +20,11 @@ spring:
         max.block.ms: 5000
   ai:
     openai:
+      base-url: https://openrouter.ai/api
       api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: openai/gpt-4o
     mcp:
       client:
         toolcallback:

@@ -5,6 +5,8 @@ A demonstration of end-to-end observability across **traces** (Jaeger), **metric
 ## Architecture
 
 ```
+         Banking Dashboard (React UI, port 5173)
+                   ↓ REST (CORS enabled)
 caller-service (port 8081) → downstream-service (port 8082)
          ↓ REST + Kafka               ↓ Axon Aggregate
     Transfer API                Account Command Processing
@@ -31,143 +33,52 @@ Infrastructure: Kafka (port 9092), PostgreSQL (port 5432)
 ```
 
 ### Banking Flow
-1. **caller-service** exposes `POST /transfers` and `GET /transfers/{id}`
-2. On transfer initiation, caller-service:
-   - Saves a `PENDING` transfer record in PostgreSQL
-   - Calls downstream-service via HTTP to process the transfer
-   - Consumes `TransferCompletedEvent` from Kafka
-   - Updates transfer status to `COMPLETED` (or `FAILED`)
-3. **downstream-service** handles Axon commands:
-   - `CreateAccountCommand` → creates an AccountAggregate
-   - `TransferFundsCommand` → debits account, emits `FundsTransferredEvent` and `TransferCompletedEvent`
-   - Events stored in Axon JPA event store (PostgreSQL)
-   - Events published to Kafka via Axon Kafka extension
+1. **Banking Dashboard (UI)**: React application providing a visual interface to manage accounts and transfers.
+2. **caller-service** exposes `POST /transfers` and `GET /transfers`:
+   - Saves a `PENDING` transfer record in PostgreSQL.
+   - Calls downstream-service via HTTP to process the transfer.
+   - Consumes `TransferCompletedEvent` from Kafka to update status.
+3. **downstream-service** handles account management and CQRS read model:
+   - `AccountAggregate` handles commands and emits events.
+   - `AccountProjection` projects events into a queryable JPA read model.
+   - Exposes `POST /accounts` and `GET /accounts`.
 
 ## Start the Stack
 
+### 1. Backend Infrastructure
 ```bash
 docker compose up -d --build
 ```
+Starts all backend services (Jaeger, Prometheus, Loki, Grafana, Kafka, Postgres, and the Java microservices).
 
-This starts all 12 containers:
-- `jaeger` — Jaeger all-in-one (traces)
-- `prometheus` — Prometheus with exemplar storage enabled
-- `loki` — Loki log aggregation
-- `grafana` — Dashboards
-- `mcp-grafana` — Grafana MCP server (read-only)
-- `promtail` — Log scraper
-- `postgres` — PostgreSQL (Axon event store + caller read model)
-- `kafka` — Kafka (Confluent KRaft mode, event bus)
-- `caller-service` — Banking Transfer API with Kafka consumer
-- `downstream-service` — Axon Account Aggregate with Kafka publisher
-- `jaeger-mcp-service` — Custom Jaeger trace MCP server
-- `triage-agent` — AI triage agent (MCP client + OpenAI)
-
-## Create an Account
-
-Transfers require a source account with sufficient balance.
-
+### 2. Banking Dashboard (UI)
 ```bash
-curl -X POST -H 'Content-Type: application/json' \
-  -d '{"accountId":"acc-1","initialBalance":500}' \
-  http://localhost:8082/accounts
+cd ui
+npm install
+npm run dev
 ```
+The UI will be available at [http://localhost:5173](http://localhost:5173).
 
-## Initiate a Transfer
+## Features
 
-```bash
-curl -D - -X POST -H 'Content-Type: application/json' \
-  -d '{"fromAccount":"acc-1","toAccount":"acc-2","amount":100}' \
-  http://localhost:8081/transfers
-```
+### Banking Dashboard
+A modern React-based UI to interact with the banking system:
+- **Create Account**: Provision new accounts with initial balances.
+- **Initiate Transfer**: Move funds between accounts.
+- **Accounts Overview**: Real-time list of all accounts and their current balances.
+- **Transfer History**: Monitor the status of transfers as they transition from `PENDING` to `COMPLETED` via Kafka.
 
-The response includes:
-- `202 Accepted`
-- `X-Trace-Id` header for trace correlation
-- JSON body with `transferId` and `status: PENDING`
-
-## Poll Transfer Status
-
-```bash
-curl http://localhost:8081/transfers/{transferId}
-```
-
-Status transitions: `PENDING` → `COMPLETED` (typically within a few seconds, once the Kafka event is consumed).
-
-## Verify Traces (Jaeger UI)
-
-Open [http://localhost:16686](http://localhost:16686) and:
-
-1. Select service `caller-service` from the dropdown
-2. Click **Find Traces**
-3. You should see a trace that spans both `caller-service` and `downstream-service`
-4. Click on the trace to see individual spans: `POST /transfers`, `TransferController.initiateTransfer`, `AccountAggregate.handle`, `EventBus.publishEvent`, `bank.events publish`, `bank.events process`
-
-## Verify Exemplars & Metrics (Prometheus & Grafana)
-
-### Option A: Use the JVM & Application Metrics Dashboard (Recommended)
-Open [http://localhost:3000](http://localhost:3000) (login: `admin` / `admin`) and:
-1. Go to **Dashboards** in the left sidebar.
-2. Select the **Observability** folder, and open **JVM & Application Metrics Dashboard**.
-3. Use the **Service** dropdown at the top to filter metrics for `caller-service` or `downstream-service`.
-4. In the **HTTP Latency Buckets (with Prometheus Exemplars)** panel:
-   - Hover over the plotted dots to view HTTP request durations.
-   - Any requests recorded with traces will display green **Exemplar** dots.
-   - Hover over an exemplar dot to view its `trace_id` and click the link to jump directly to the Jaeger trace viewer.
-
-### Option B: Explore directly via Prometheus UI
-Open [http://localhost:9090](http://localhost:9090) and:
-
-1. Query for: `http_server_requests_seconds_bucket`
-2. Switch to the **Graph** or **Table** view
-3. Use `curl` to inspect OpenMetrics format directly:
-   ```bash
-   curl -H 'Accept: application/openmetrics-text' \
-     http://localhost:8081/actuator/prometheus | grep trace_id
-   ```
-4. Confirm histogram bucket lines carry `# {trace_id="…"}` exemplars
-
-## Verify Logs (Grafana → Loki)
-
-Open [http://localhost:3000](http://localhost:3000) (login: `admin` / `admin`) and:
-
-### Option A: Use the Service Logs Dashboard (Recommended)
-1. Go to **Dashboards** in the left sidebar.
-2. Select the **Observability** folder, and open **Service Logs Dashboard**.
-3. Use the dropdown filters at the top:
-   - **Service**: Filter logs by `caller-service` or `downstream-service`.
-   - **Log Level**: Filter logs by `INFO`, `WARN`, `ERROR`, or `DEBUG`.
-   - **Trace ID**: Input a specific trace ID (default is `.*` to show all) to see related logs across both services.
-4. *Tip:* Any log line containing a `"trace_id"` will show the trace ID as a clickable link (**TraceID**). Clicking it opens the corresponding Jaeger trace details directly inside Grafana.
-
-### Option B: Explore directly via Loki
-1. Navigate to **Explore**
-2. Select **Loki** as the data source
-3. Run the query:
-   ```
-   {job="java-logs"} | json | trace_id="<your_trace_id>"
-   ```
-4. You should see log lines from both `caller-service` and `downstream-service` sharing the same `trace_id`
-
-## Verify Kafka Messages (Kafka UI)
-
-Open [http://localhost:8085](http://localhost:8085) and:
-
-1. Click on the **local** cluster.
-2. Select **Topics** on the left menu.
-3. Click on the `bank.events` topic.
-4. Go to the **Messages** tab.
-5. Click **Seek to** / **Submit** to view incoming event messages (like `FundsTransferredEvent`, `TransferCompletedEvent`).
-
-*Alternatively, to view via CLI:*
-```bash
-docker exec -it observability_agent-kafka-1 kafka-console-consumer --bootstrap-server localhost:9092 --topic bank.events --from-beginning
-```
+### Triage Agent
+The triage agent (`triage-agent`) is a Spring AI MCP client that uses OpenAI GPT-4o to orchestrate incident investigation:
+- Receive a symptom (e.g., "High error rate on caller-service").
+- Automatically query Prometheus, Jaeger, and Loki.
+- Correlate signals and produce a root-cause hypothesis with deep links to Grafana.
 
 ## Container URLs
 
 | Service            | URL                                | Credentials         |
 |--------------------|------------------------------------|---------------------|
+| **Banking UI**     | **http://localhost:5173**          | (no auth)           |
 | Kafka UI           | http://localhost:8085              | (no auth)           |
 | Grafana            | http://localhost:3000              | admin / admin       |
 | Jaeger UI          | http://localhost:16686             | (no auth)           |
@@ -175,12 +86,7 @@ docker exec -it observability_agent-kafka-1 kafka-console-consumer --bootstrap-s
 | Loki               | http://localhost:3100              | (no auth)           |
 | caller-service     | http://localhost:8081/transfers    | (no auth)           |
 | downstream-service | http://localhost:8082/accounts     | (no auth)           |
-| Promtail           | http://localhost:9080              | (no auth)           |
-| Kafka              | localhost:9092                     | (no auth)           |
-| PostgreSQL         | localhost:5432                     | appuser / secret    |
-| **mcp-grafana**    | **http://localhost:8000**          | (no auth)           |
-| **jaeger-mcp-service** | **http://localhost:8083**      | (no auth)           |
-| **triage-agent**       | **http://localhost:8084**      | (no auth)           |
+| **triage-agent**   | **http://localhost:8084**          | (no auth)           |
 
 ## Environment Variables
 
